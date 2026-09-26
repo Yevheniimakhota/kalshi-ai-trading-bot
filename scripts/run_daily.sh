@@ -40,6 +40,8 @@ echo "[run_daily] $(date) mode=$MODE -> $LOG"
 PYTHONPATH="$REPO" "$PYBIN" scripts/capture_corpus.py >>"$LOG" 2>&1 || true
 PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_data.py today >>"$LOG" 2>&1 || true
 PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_futures.py fetch >>"$LOG" 2>&1 || true
+# score any pricing snapshots whose print has landed (model vs book, Brier)
+PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_pricer.py score >>"$LOG" 2>&1 || true
 
 echo "[run_daily] $(date) mode=$MODE -> $LOG (trading loop next)"
 PYTHONPATH="$REPO" "$PYBIN" cli.py daily $FLAG >>"$LOG" 2>&1
