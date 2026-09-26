@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import asyncio
 import datetime as dt
 import json
 import math
@@ -185,8 +186,10 @@ def cmd_price(args) -> None:
     load_dotenv(REPO / ".env")
     from src.clients.kalshi_client import KalshiClient
 
+    retail_col = getattr(args, "retail", None) or (
+        "regular" if "GAS" in args.series.upper() else "diesel")
     rows = aaa_data.load_csv()
-    seq = aaa_data.build_print_series(rows)
+    seq = aaa_data.build_print_series(rows, value_col=retail_col)
     if not seq:
         print("no AAA series; run scripts/aaa_data.py backfill first", file=sys.stderr)
         return 1
@@ -233,8 +236,7 @@ def cmd_price(args) -> None:
     wholesale = None
     try:
         import aaa_futures
-        sym = "HO=F" if "DIESEL" in args.series.upper() else "RB=F"
-        retail_col = "diesel" if "DIESEL" in args.series.upper() else "regular"
+        sym = "HO=F" if retail_col == "diesel" else "RB=F"
         wholesale = aaa_futures.convergence(rows, sym, retail_col)
         if wholesale:
             print("wholesale:", wholesale)
@@ -256,12 +258,63 @@ def cmd_price(args) -> None:
     print(f"snapshot -> {path}")
 
 
+MONTHS = {m: i + 1 for i, m in enumerate(
+    ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+     "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"])}
+
+
+def target_to_ticker_date(target: str) -> str | None:
+    """'2026-09-27' -> '26SEP27' (Kalshi ticker date fragment)."""
+    try:
+        d = dt.date.fromisoformat(target)
+    except ValueError:
+        return None
+    return f"{d.year % 100:02d}{MONTHS[d.strftime('%b').upper()]}{d.day:02d}"
+
+
+async def settled_print_bracket(series: str, target: str) -> dict | None:
+    """Realized print bracket for target date from the series' settled ladder.
+
+    Returns {"lo": x, "hi": y, "mid": m} where the print is in (lo, hi]
+    (max settled-YES strike < print <= min settled-NO strike), or None.
+    """
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from dotenv import load_dotenv
+    load_dotenv(REPO / ".env")
+    from src.clients.kalshi_client import KalshiClient
+    day = target_to_ticker_date(target)
+    if day is None:
+        return None
+    c = KalshiClient()
+    try:
+        r = await c.get_markets(series_ticker=series, status="settled", limit=200)
+        mks = r.get("markets", r) if isinstance(r, dict) else r
+        yes_strikes, no_strikes = [], []
+        for m in mks:
+            if not m.get("ticker", "").split("-")[1].startswith(day):
+                continue
+            strike = parse_strike(m["ticker"])
+            if strike is None:
+                continue
+            (yes_strikes if m.get("result") == "yes" else no_strikes).append(strike)
+        if not yes_strikes or not no_strikes:
+            return None
+        lo, hi = max(yes_strikes), min(no_strikes)
+        if lo >= hi:
+            return None
+        return {"lo": lo, "hi": hi, "mid": (lo + hi) / 2}
+    finally:
+        await c.close()
+
+
 def cmd_score() -> int:
     """Score saved pricing snapshots against realized prints (forward-only).
 
-    Realized print for a snapshot's target_date = the AAA series value with that
-    calendar date (written by scripts/aaa_data.py). If the date is not yet in the
-    series the snapshot is pending and skipped. Writes/updates
+    Realized print precedence: (1) Kalshi's settled strike bracket for the
+    target date (authoritative, 0.5c precision — the source the market itself
+    resolved on), (2) the AAA series page value for that date. If neither is
+    available the snapshot is pending and skipped. Writes/updates
     data/aaa/scores.jsonl with per-strike Brier for the model fair and the book
     mid, so model-vs-book calibration accumulates over time.
     """
@@ -279,9 +332,19 @@ def cmd_score() -> int:
         except Exception:
             continue
         target = snap.get("target_date")
-        if target not in realized:
+        actual = None
+        source = None
+        if target in realized:
+            actual, source = realized[target], "aaa_page"
+        else:
+            try:
+                bracket = asyncio.run(settled_print_bracket(snap.get("series", ""), target))
+            except Exception:
+                bracket = None
+            if bracket:
+                actual, source = bracket["mid"], f"settled_bracket({bracket['lo']},{bracket['hi']}]"
+        if actual is None:
             continue
-        actual = realized[target]
         for r in snap.get("rows", []):
             y_bid, y_ask = r.get("yes_bid", 0.0), r.get("yes_ask", 1.0)
             if not (0 < y_bid < 1 and 0 < y_ask < 1) or y_ask - y_bid > 0.25:
@@ -293,6 +356,7 @@ def cmd_score() -> int:
             y = 1.0 if actual > r.get("strike", -1) else 0.0
             scores.append({
                 "ts": snap.get("ts"), "series": snap.get("series"), "target": target,
+                "source": source,
                 "ticker": r.get("ticker"), "actual": actual, "y": y,
                 "fair_yes": fair, "book_mid": round(mid, 4),
                 "brier_model": round((fair - y) ** 2, 4),
@@ -319,6 +383,8 @@ def main() -> None:
     p = sub.add_parser("price")
     p.add_argument("--series", default="KXDIESELD", help="Kalshi series ticker")
     p.add_argument("--target", required=True, help="target print date, e.g. 2026-09-27")
+    p.add_argument("--retail", choices=["diesel", "regular"], default=None,
+                   help="AAA column to model (default: regular for *GAS*, diesel otherwise)")
     sub.add_parser("score")
     args = ap.parse_args()
     if args.cmd == "price":
