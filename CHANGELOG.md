@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **AAA gas/diesel toolkit** — `scripts/aaa_data.py` (durable AAA Fuel Gauge print
+  series rebuilt from Wayback Machine snapshots + daily live capture), `scripts/aaa_futures.py`
+  (wholesale futures + retail-vs-wholesale convergence diagnostics), `scripts/aaa_pricer.py`
+  (strike-ladder pricing vs the live book with fee-aware edges, forward-scored by
+  `score`), `docs/AAA.md` (mechanics, model, and the 2026-09-26 efficiency verdict),
+  tests in `tests/test_aaa_pricer.py`. `run_daily.sh` now captures the corpus, the
+  AAA print and the pricing snapshot every run before the trading loop.
 - **TypeSafe Jev support** (`~typesafe/jev-latest`, OpenRouter Decisions API) — measured, not
   hyped: see **[docs/JEV.md](docs/JEV.md)**. `cli verify --jev` floors the skeptic's
   true-YES at Jev's independent P(YES) (stricter-only); `src/agent/jev.py` +

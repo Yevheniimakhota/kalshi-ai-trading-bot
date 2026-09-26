@@ -30,6 +30,18 @@ TS="$(date +%Y%m%d_%H%M%S)"
 LOG="logs/daily_runs/daily_${TS}.log"
 
 echo "[run_daily] $(date) mode=$MODE -> $LOG"
+
+# Data capture first — no orders involved, safe in both modes. These keep the
+# evidence base growing even on days the trading loop does nothing:
+#   * full-universe price snapshot (the entry-price corpus for backtests)
+#   * AAA fuel-gauge print series (data/aaa/aaa_daily.csv, idempotent per day)
+#   * AAA ladder pricing snapshot vs the live book (forward-scored by
+#     scripts/aaa_pricer.py score once the print lands)
+PYTHONPATH="$REPO" "$PYBIN" scripts/capture_corpus.py >>"$LOG" 2>&1 || true
+PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_data.py today >>"$LOG" 2>&1 || true
+PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_futures.py fetch >>"$LOG" 2>&1 || true
+
+echo "[run_daily] $(date) mode=$MODE -> $LOG (trading loop next)"
 PYTHONPATH="$REPO" "$PYBIN" cli.py daily $FLAG >>"$LOG" 2>&1
 STATUS=$?
 echo "[run_daily] $(date) exit=$STATUS mode=$MODE log=$LOG"

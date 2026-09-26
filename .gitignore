@@ -208,6 +208,12 @@ graphify-out/
 data/runtime/
 data/backtest/
 data/corpus/
+
+# AAA research data: raw page cache, pricing snapshots, futures caches, scores
+data/aaa/raw/
+data/aaa/pricings/
+data/aaa/futures/
+data/aaa/scores.jsonl
 *.jsonl
 # ...but the shipped demo fixtures MUST travel with the repo (cli policy --demo).
 !tests/fixtures/demo_*.jsonl
