@@ -133,6 +133,29 @@ def snapshot() -> dict:
     return parsed
 
 
+DAY_URL = "https://openrouter.ai/api/frontend/v1/rankings/models?view=day"
+
+
+def day_shares() -> dict:
+    """Author shares of ALL requests for the most recent complete UTC day.
+
+    The resolution chart is TEXT-filtered, so treat these as the raw signal and
+    convert with the per-author text/all gap measured from the chart snapshot.
+    """
+    import httpx
+    from collections import defaultdict
+    r = httpx.get(DAY_URL, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    rows = r.json()["data"]
+    tot = sum(x["count"] or 0 for x in rows)
+    by_author = defaultdict(int)
+    for x in rows:
+        by_author[x["model_permaslug"].split("/")[0]] += x["count"] or 0
+    shares = {a: round(v / tot * 100, 2) for a, v in
+              sorted(by_author.items(), key=lambda kv: -kv[1]) if v > 0}
+    return {"date": rows[0]["date"][:10], "total_requests": tot, "shares": shares}
+
+
 def latest_snapshot() -> dict | None:
     files = sorted(SNAP_DIR.glob("*.json"))
     if not files:
@@ -154,6 +177,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("snapshot")
+    sub.add_parser("day")
     p = sub.add_parser("read")
     p.add_argument("file")
     p2 = sub.add_parser("week")
@@ -163,6 +187,8 @@ def main() -> None:
     args = ap.parse_args()
     if args.cmd == "snapshot":
         snapshot()
+    elif args.cmd == "day":
+        print(json.dumps(day_shares(), indent=1))
     elif args.cmd == "read":
         print(json.dumps(parse_raw(_unescape_cli_output(Path(args.file).read_text())), indent=1))
     else:
