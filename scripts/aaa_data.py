@@ -35,6 +35,7 @@ import argparse
 import csv
 import datetime as dt
 import httpx
+import json
 import re
 import sys
 import time
@@ -181,12 +182,74 @@ def backfill_wayback(from_date: str = "20250101", to_date: str = "", max_workers
     return len(rows)
 
 
+def fetch_via_browser(url: str = LIVE_URL) -> dict | None:
+    """Browser fallback when AAA challenges httpx (Cloudflare).
+
+    Uses agent-browser to render the page and extracts the Current/Yesterday
+    averages straight from the DOM table cells.
+    """
+    import subprocess
+    def ab(*args: str) -> str:
+        return subprocess.run(["agent-browser", *args], capture_output=True,
+                              text=True, timeout=120).stdout
+    ab("open", url)
+    ab("wait", "4000")
+    raw = ab("eval", "(() => { const cells = [...document.querySelectorAll('td')];"
+                     " const i = cells.findIndex(c => c.innerText.includes('Current'));"
+                     " return i >= 0 ? JSON.stringify(cells.slice(i, i+10).map(c => c.innerText)) : '[]'; })()")
+    s = raw.strip()
+    if s.startswith('"') and s.endswith('"'):
+        try:
+            s = json.loads(s)
+        except json.JSONDecodeError:
+            pass
+    try:
+        cells = json.loads(s)
+    except (json.JSONDecodeError, TypeError):
+        print(f"browser fallback failed: {raw[:120]}", file=sys.stderr)
+        return None
+    vals = [float(str(c).lstrip("$")) for c in cells[1:] if str(c).startswith("$")]
+    if len(vals) < 4:
+        print(f"browser fallback: unexpected cells {cells[:8]}", file=sys.stderr)
+        return None
+    # national table: cur regular, cur mid, cur premium, cur diesel
+    raw2 = ab("eval", "(() => { const cells = [...document.querySelectorAll('td')];"
+                      " const i = cells.findIndex(c => c.innerText.includes('Yesterday'));"
+                      " return i >= 0 ? JSON.stringify(cells.slice(i, i+6).map(c => c.innerText)) : '[]'; })()")
+    s2 = raw2.strip()
+    if s2.startswith('"') and s2.endswith('"'):
+        try:
+            s2 = json.loads(s2)
+        except json.JSONDecodeError:
+            pass
+    try:
+        ycells = [float(str(c).lstrip("$")) for c in json.loads(s2)[1:] if str(c).startswith("$")]
+    except Exception:
+        ycells = []
+    out = {"cur_reg": vals[0], "cur_mid": vals[1], "cur_prem": vals[2], "cur_die": vals[3]}
+    if len(ycells) >= 4:
+        out.update({"yes_reg": ycells[0], "yes_mid": ycells[1], "yes_prem": ycells[2], "yes_die": ycells[3]})
+    return out
+
+
 def fetch_today(base_url: str = LIVE_URL) -> dict | None:
     """Fetch the live page and merge today's row (idempotent per calendar day)."""
     resp = httpx.get(base_url, timeout=30, headers=HEADERS, follow_redirects=True)
     if resp.status_code != 200 or "Current Avg" not in resp.text:
-        print(f"live fetch failed: status={resp.status_code}", file=sys.stderr)
-        return None
+        print(f"direct fetch failed (status={resp.status_code}); trying browser fallback", file=sys.stderr)
+        b = fetch_via_browser(base_url)
+        if not b:
+            return None
+        now = dt.datetime.now()
+        day = now.date().isoformat()
+        rows = load_csv()
+        row = {"date": day, "diesel": b["cur_die"], "diesel_yes": b.get("yes_die", ""),
+               "regular": b["cur_reg"], "regular_yes": b.get("yes_reg", ""),
+               "src": "live-browser", "snapshot_ts": now.strftime("%Y%m%d%H%M%S")}
+        rows[day] = row
+        write_csv(rows)
+        print(f"merged (browser) {day}: cur diesel {row['diesel']} regular {row['regular']}")
+        return row
     p = parse_aaa_page(resp.text)
     if not p:
         print("live page parsed but no table found", file=sys.stderr)
@@ -214,8 +277,18 @@ def fetch_state(state: str, base_url: str = "https://gasprices.aaa.com/?state={s
     resp = httpx.get(base_url.format(state=state.upper()), timeout=30, headers=HEADERS,
                      follow_redirects=True)
     if resp.status_code != 200 or "Current Avg" not in resp.text:
-        print(f"{state}: fetch failed status={resp.status_code}", file=sys.stderr)
-        return None
+        print(f"{state}: direct fetch failed (status={resp.status_code}); browser fallback", file=sys.stderr)
+        b = fetch_via_browser(base_url.format(state=state.upper()))
+        if not b:
+            return None
+        now = dt.datetime.now()
+        path = states_csv_path(state)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        rows = load_csv_from(path)
+        rows[now.date().isoformat()] = _row(now.date().isoformat(), b, "live-browser",
+                                            now.strftime("%Y%m%d%H%M%S"))
+        write_csv_to(path, rows)
+        return rows[now.date().isoformat()]
     p = parse_aaa_page(resp.text)
     if not p:
         print(f"{state}: no table", file=sys.stderr)
