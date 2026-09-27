@@ -105,6 +105,29 @@ python cli.py dashboard
 
 ---
 
+## Data-Fed Families (priced from the resolution source)
+
+Some families resolve on a published number. For those, pricing means reading
+the source — and the repo ships the source-readers plus the forward-scoring
+loop that grades the model against the book:
+
+| Family | Source | Tools | Docs |
+|---|---|---|---|
+| AAA gas/diesel daily + weekly/monthly ladders | AAA Fuel Gauge prints (national + 21 states) + wholesale futures | `scripts/aaa_data.py`, `scripts/aaa_futures.py`, `scripts/aaa_pricer.py price|path|score` | [docs/AAA.md](docs/AAA.md) |
+| Monthly GPU compute price (KXA100MS...) | Ornn OCPI public daily index | `scripts/ornn_data.py fetch|strike|ladder` | [docs/ORNN.md](docs/ORNN.md) |
+| OpenRouter weekly author text-share (KX*SHARE) | the rankings "Market Share" chart (Mon 10am ET) | `scripts/orshare_data.py snapshot|day|week` | `data/research/NOTES_orshare_family.json` |
+| Truth Social weekly post buckets | Roll Call count (Mon 10am ET) | `scripts/ts_posts.py` | `data/research/NOTES_ts_spree.json` |
+| Any priced snapshot | realized outcomes | `scripts/jev_score.py`, `scripts/aaa_pricer.py score` | `data/runtime/jev_scores.jsonl` |
+
+The discipline these encode: **every pricing event is snapshotted with the
+model's fair, the book's quote, and fee-aware edges — then scored against the
+realized value once it settles.** Standing verdicts per alert family live in
+`data/aaa/alerts/ADJUDICATIONS.md`. A scheduled morning job (4:05am PT) refreshes
+all sources, reprices every ladder, and drops gap alerts for the agent loop;
+it never places orders.
+
+---
+
 ## Agent-Native Surface
 
 The toolkit is built to be driven by an agent (Claude, or anything else) through small, composable tools — each does one thing and reports honestly. You can call them yourself, wire them into a loop, or hand the keys to an MCP client.
