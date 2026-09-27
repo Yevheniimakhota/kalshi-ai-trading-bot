@@ -45,6 +45,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import aaa_data  # noqa: E402
 
 PRICINGS_DIR = REPO / "data" / "aaa" / "pricings"
+SCORES_PATH = REPO / "data" / "aaa" / "scores.jsonl"
 
 # Kalshi taker fee (general markets): fee_cents = ceil(0.07 * C * P * (1-P)).
 # Maker orders pay no fee. We size per-contract with the ceiling as a
@@ -482,6 +483,14 @@ def cmd_score() -> int:
             return realized_regular.get(target), "aaa_page_regular"
         return realized_diesel.get(target), "aaa_page_diesel"
 
+    # row-level dedup: each (ticker) strike-observation is scored once, ever
+    scored_keys = set()
+    if SCORES_PATH.exists():
+        for line in SCORES_PATH.open():
+            try:
+                scored_keys.add(json.loads(line)["ticker"])
+            except Exception:
+                continue
     scores = []
     for path in sorted(PRICINGS_DIR.glob("*.json")):
         try:
@@ -504,6 +513,8 @@ def cmd_score() -> int:
         if actual is None:
             continue
         for r in snap.get("rows", []):
+            if r.get("ticker") in scored_keys:
+                continue  # already scored in an earlier run
             y_bid, y_ask = r.get("yes_bid", 0.0), r.get("yes_ask", 1.0)
             if not (0 < y_bid < 1 and 0 < y_ask < 1) or y_ask - y_bid > 0.25:
                 continue  # untradeable / one-sided book: not a scored observation
