@@ -22,7 +22,9 @@ echo "[run_morning] $(date) -> $LOG"
 
 run() { PYTHONPATH="$REPO" "$PYBIN" "$@" >>"$LOG" 2>&1 || true; }
 
-TARGET="$(date -u -d '+1 day' +%F 2>/dev/null || date -u -v+1d +%F)"
+TARGET="$(date -u -d '+1 day' +%F 2>/dev/null || date -u -v+1d +%F)"          # next print (daily ladders)
+TARGET_WEEK="$(date -u -d '+2 days' +%F 2>/dev/null || date -u -v+2d +%F)"     # weekly resolves on the print after next
+TARGET_MONTH="$(date -u -d '+4 days' +%F 2>/dev/null || date -u -v+4d +%F)"    # monthly, 30 days ahead of the week
 
 run scripts/capture_corpus.py
 run scripts/aaa_data.py today
@@ -31,8 +33,8 @@ run scripts/aaa_futures.py fetch
 run scripts/ornn_data.py fetch
 run scripts/ornn_data.py ladder
 run scripts/orshare_data.py snapshot
-run scripts/aaa_pricer.py path --series KXDIESELMON --target "$TARGET"
-run scripts/aaa_pricer.py path --series KXDIESELW --target "$TARGET"
+run scripts/aaa_pricer.py path --series KXDIESELMON --target "$TARGET_MONTH"
+run scripts/aaa_pricer.py path --series KXDIESELW --target "$TARGET_WEEK"
 run scripts/aaa_pricer.py price --series KXDIESELD --target "$TARGET" --alert-min 0.10
 run scripts/aaa_pricer.py price --series KXAAAGASD --target "$TARGET" --retail regular --alert-min 0.10
 for ST in NV WA OR MA NJ CA AZ CO CT FL GA IL MI MN NC NY OH PA TX VA WI; do
