@@ -31,6 +31,8 @@ run scripts/aaa_futures.py fetch
 run scripts/ornn_data.py fetch
 run scripts/ornn_data.py ladder
 run scripts/orshare_data.py snapshot
+run scripts/aaa_pricer.py path --series KXDIESELMON --target "$TARGET"
+run scripts/aaa_pricer.py path --series KXDIESELW --target "$TARGET"
 run scripts/aaa_pricer.py price --series KXDIESELD --target "$TARGET" --alert-min 0.10
 run scripts/aaa_pricer.py price --series KXAAAGASD --target "$TARGET" --retail regular --alert-min 0.10
 for ST in NV WA OR MA NJ CA AZ CO CT FL GA IL MI MN NC NY OH PA TX VA WI; do

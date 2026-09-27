@@ -344,6 +344,100 @@ async def settled_print_bracket(series: str, target: str) -> dict | None:
         await c.close()
 
 
+def fit_path_model(deltas: list[float], excess_gap_cents: float | None,
+                   current_streak: int = 0) -> dict:
+    """Multi-day path model for weekly/monthly print ladders.
+
+    Daily delta distribution = empirical consecutive-print changes; the drift
+    is max(empirical mean, -convergence_rate) where the convergence rate is
+    min(2.2c/day, 0.03 * excess_gap_cents) while the retail-vs-wholesale gap
+    is elevated (the 2026-09-26 lesson: gap closing runs ~2c/day historically).
+    Pure; tested.
+    """
+    import numpy as np
+    arr = np.asarray(deltas, dtype=float)
+    emp_drift = float(arr.mean())
+    drift = emp_drift
+    if excess_gap_cents is not None and excess_gap_cents > 5:
+        conv = -min(2.2, 0.03 * excess_gap_cents)
+        drift = min(emp_drift, conv)
+    return {"deltas": arr, "drift_c": drift, "emp_drift_c": emp_drift}
+
+
+def path_mcs(model: dict, days: int, n_sims: int = 20000, seed: int = 3) -> "object":
+    """Simulate cumulative print changes over `days`; returns the array."""
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    samp = model["deltas"][rng.integers(0, len(model["deltas"]), size=(n_sims, days))]
+    drift_adj = model["drift_c"] - model["emp_drift_c"]
+    return np.cumsum(samp + drift_adj, axis=1)
+
+
+def cmd_path(series: str, target_date: str) -> int:
+    """Price weekly/monthly print ladders with the wholesale-convergence path model."""
+    import asyncio
+    import datetime as dt
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from dotenv import load_dotenv
+    load_dotenv(REPO / ".env")
+    from src.clients.kalshi_client import KalshiClient
+    import aaa_futures
+
+    retail_col = "diesel"
+    rows = aaa_data.load_csv()
+    seq = aaa_data.build_print_series(rows, value_col=retail_col)
+    if not seq:
+        print("no AAA series", file=sys.stderr)
+        return 1
+    deltas = [s["delta_cents"] for s in seq]
+    cur = seq[-1]["value"]
+    # horizon: days until the target print (inclusive count of prints ahead)
+    target = dt.date.fromisoformat(target_date)
+    last_date = dt.date.fromisoformat(seq[-1]["date"])
+    horizon = max((target - last_date).days, 1)
+    # days until the target print: the value published ON target_date is
+    # horizon prints after the last known print
+    sym = "HO=F"
+    wholesale = aaa_futures.convergence(rows, sym, retail_col)
+    excess = (wholesale or {}).get("excess_gap_cents")
+    model = fit_path_model(deltas, excess)
+    print(f"cur {cur} ({seq[-1]['date']}), horizon {horizon} prints to {target_date}, "
+          f"drift {model['drift_c']:+.2f}c/day (emp {model['emp_drift_c']:+.2f}, excess gap {excess}c)")
+    cum_dollars = path_mcs(model, horizon) / 100.0  # model deltas are in cents
+    async def run():
+        c = KalshiClient()
+        r = await c.get_markets(series_ticker=series, status="open", limit=200)
+        mks = r.get("markets", r) if isinstance(r, dict) else r
+        out_rows = []
+        for m in sorted(mks, key=lambda x: parse_strike(x["ticker"]) or 0):
+            strike = parse_strike(m["ticker"])
+            if strike is None:
+                continue
+            fair_yes = float((cur + cum_dollars[:, -1] > strike).mean())
+            book = await fetch_book(c, m["ticker"])
+            e = fee_aware_edges(fair_yes, book)
+            out_rows.append({"ticker": m["ticker"], "strike": strike,
+                             "fair_yes": round(fair_yes, 4), **book, **e})
+        await c.close()
+        return out_rows
+    rows_out = asyncio.run(run())
+    rows_out.sort(key=lambda r: -abs(max(r["buy_yes_edge"], r["buy_no_edge"])))
+    print(f"{'ticker':36s} {'fairYES':>8s} {'bid':>5s} {'ask':>5s} {'edgeY':>8s} {'edgeN':>8s}")
+    for r in rows_out[:14]:
+        print(f"{r['ticker']:36s} {r['fair_yes']:8.3f} {r['yes_bid']:5.2f} {r['yes_ask']:5.2f} "
+              f"{r['buy_yes_edge']:+8.3f} {r['buy_no_edge']:+8.3f}")
+    PRICINGS_DIR.mkdir(parents=True, exist_ok=True)
+    snap = {"ts": dt.datetime.now(dt.UTC).isoformat(), "series": series,
+            "target_date": target_date, "model": "convergence_path",
+            "last_print": cur, "horizon": horizon, "excess_gap_cents": excess,
+            "rows": rows_out}
+    path = PRICINGS_DIR / f"{snap['ts'].replace(':', '').replace('-', '')}_{series}_path.json"
+    path.write_text(json.dumps(snap, indent=1))
+    print(f"snapshot -> {path}")
+    return 0
+
+
 def cmd_score() -> int:
     """Score saved pricing snapshots against realized prints (forward-only).
 
@@ -424,11 +518,16 @@ def main() -> None:
     p.add_argument("--alert-min", type=float, default=None,
                    help="write an alerts JSON for strikes with |edge| >= this (e.g. 0.10)")
     sub.add_parser("score")
+    pp = sub.add_parser("path")
+    pp.add_argument("--series", default="KXDIESELMON")
+    pp.add_argument("--target", required=True)
     args = ap.parse_args()
     if args.cmd == "price":
         raise SystemExit(cmd_price(args))
     if args.cmd == "score":
         raise SystemExit(cmd_score())
+    if args.cmd == "path":
+        raise SystemExit(cmd_path(args.series, args.target))
 
 
 if __name__ == "__main__":
