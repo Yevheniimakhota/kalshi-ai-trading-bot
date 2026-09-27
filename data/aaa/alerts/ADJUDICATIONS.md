@@ -12,16 +12,18 @@ book's calibration (implied median 6.480, realized 6.4839).
 **Rule: diesel alerts are tradeable only when the excess gap is < ~5c AND the
 model still disagrees by > fee+margin after the wholesale adjustment.**
 
-## KXAAAGASD* states (21 state ladders) — model PROVEN BAD forward; paper only
-Adjudicated 2026-09-26, then CONFIRMED by the first forward scores (n=498 over
-the 9/25 sweep): book Brier 0.0539 vs agent model 0.0975 vs Jev 0.1526. The
-model was catastrophic on NV (Brier 0.56: priced the 9/26 print median ~5.40
-while the realized print cleared 5.45 — book had it right), bad on WI/IL/IN and
-YouTube views; competitive only on diesel (0.0215 vs book 0.0206). Root cause
-of the NV miss: the sweep priced from a stale state anchor. The morning job now
-re-fetches every state page before pricing. **No size on state gas until a
-re-run sweep with fresh anchors shows model Brier < book Brier forward.** The
-rare big wins (AZ/FL/GA) do not pay for the tail risk at near-empty books.
+## KXAAAGASD* states (21 state ladders) — book is SHARP; transfer model loses
+Adjudicated 2026-09-26; CONFIRMED with valid forward scores 2026-09-27 (the
+9/27 print day, 21 states): book Brier 0.0283 vs transfer-model 0.1572 over
+141 strike-observations. NOTE an earlier "model wins by 0.28" reading was a
+SCORER BUG (state gas strikes were scored against the national diesel value -
+every y was 1); after the per-series realized-value fix the book wins clearly.
+The state books are informed (state prints move faster than the national
+average and the books track them). **No size on state gas; revisit only with a
+state-specific change model (own-series distribution, n>=30 per state) that
+beats the book forward.** Diesel national stays at par (0.0889 vs 0.0870 on the
+9/27 day, n=17) - the pre-registered rule fired as written: print 6.4709 landed
+in the adjudicated 6.45-6.47 band.
 
 ## KXAAAGASD national + KXDIESELMON/KXDIESELW — priced fair, hold book
 2026-09-26: gas national and the weekly/monthly diesel ladders are internally

@@ -448,13 +448,40 @@ def cmd_score() -> int:
     data/aaa/scores.jsonl with per-strike Brier for the model fair and the book
     mid, so model-vs-book calibration accumulates over time.
     """
-    rows = aaa_data.load_csv()
-    realized = {}
-    for date, r in rows.items():
+    # realized values are PER-SERIES: diesel series resolve on the national
+    # diesel column, national-gas on the national REGULAR column, state series
+    # on that state's REGULAR column. Mixing them manufactures bogus scores
+    # (2026-09-27 bug: state gas strikes scored against the national diesel).
+    nat_rows = aaa_data.load_csv()
+    realized_diesel, realized_regular = {}, {}
+    for date, r in nat_rows.items():
         try:
-            realized[date] = float(r["diesel"])
+            realized_diesel[date] = float(r["diesel"])
         except (TypeError, ValueError):
             pass
+        try:
+            realized_regular[date] = float(r["regular"])
+        except (TypeError, ValueError):
+            pass
+    state_realized = {}
+    for st in ("NV", "WA", "OR", "MA", "NJ", "CA", "AZ", "CO", "CT", "FL", "GA",
+               "IL", "MI", "MN", "NC", "NY", "OH", "PA", "TX", "VA", "WI"):
+        vals = {}
+        for date, r in aaa_data.load_state(st).items():
+            try:
+                vals[date] = float(r["regular"])
+            except (TypeError, ValueError):
+                pass
+        state_realized[st] = vals
+
+    def realized_for(series: str, target: str):
+        if series.startswith("KXAAAGASD") and len(series) > len("KXAAAGASD"):
+            st = series[len("KXAAAGASD"):len("KXAAAGASD") + 2]
+            return state_realized.get(st, {}).get(target), "state_page"
+        if "GAS" in series.upper():
+            return realized_regular.get(target), "aaa_page_regular"
+        return realized_diesel.get(target), "aaa_page_diesel"
+
     scores = []
     for path in sorted(PRICINGS_DIR.glob("*.json")):
         try:
@@ -464,8 +491,9 @@ def cmd_score() -> int:
         target = snap.get("target_date")
         actual = None
         source = None
-        if target in realized:
-            actual, source = realized[target], "aaa_page"
+        page_val, page_src = realized_for(snap.get("series", ""), target)
+        if page_val is not None:
+            actual, source = page_val, page_src
         else:
             try:
                 bracket = asyncio.run(settled_print_bracket(snap.get("series", ""), target))
