@@ -77,6 +77,27 @@ memory — read it if you lack context.
    self-improves without you hand-editing rules each tick.
 9. **REPORT** — summarize trades, reasoning, and the equity delta. Then continue the loop.
 
+## Data-fed families: tools, sources, and standing verdicts (2026-09-26)
+
+Mechanical, data-resolvable families get priced from their resolution source,
+not from vibes. Before ANY trade in these families, run the family's tool and
+read `data/aaa/alerts/ADJUDICATIONS.md` — the standing verdicts live there.
+
+| Family | Resolution source | Tool | Standing verdict |
+|---|---|---|---|
+| KXDIESELD daily ladder | AAA national print (market closes BEFORE the print) | `scripts/aaa_pricer.py price --series KXDIESELD --target <date>` | EFFICIENT — retail-only model lost to the wholesale-convergence check; trade only if the excess gap (`scripts/aaa_futures.py gap`) is small AND the model still disagrees |
+| KXDIESELMON / KXDIESELW | AAA weekly/monthly prints | `scripts/aaa_pricer.py path --series ... --target <date>` | Snapshot-only so far; path model fair swings with the drift assumption — needs the forward sample |
+| KXAAAGASD national + 21 states | AAA national/state pages | `scripts/aaa_data.py today|states` + `price --series KXAAAGASD<ST>` | STATES: model PROVEN bad forward (book Brier 0.054 vs model 0.098, n=498; NV root cause = stale anchor). No size until a fresh-anchor sweep beats the book |
+| KXA100MS monthly compute price | Ornn OCPI (public daily API) | `scripts/ornn_data.py fetch|strike|ladder` | Break-even math works (bought YES at 0.39-0.49 vs the all-time-low print). Watch the seller's possible hourly data |
+| KX*SHARE weekly | OpenRouter "Market Share" chart (Mon 10am ET, TEXT requests by author, 1dp; author in "Others" => all NO) | `scripts/orshare_data.py snapshot|day|week` + `scripts/ts_posts.py` for post buckets | Books validated vs settled brackets. Watch the trap clause and the weekend text-share dilution |
+| KXTRUTHSOCIAL weekly buckets | Roll Call post count (10am ET Mon; Truths+ReTruths+Quotes) | `scripts/ts_posts.py --week <start>` (proxy ±1 vs Roll Call) | Count proxy validated; don't fade live-catalyst tail buckets |
+| Jev forward log | same markets | `scripts/jev_score.py` (runs in the morning job) | First forward scores: book Brier 0.054 > model 0.098 > Jev 0.153 (n=498). The sweep's model is NOT good enough to trade yet |
+
+**Every pricing run writes a snapshot under `data/aaa/pricings/` (and Ornn ladder
+pricings) that `aaa_pricer.py score` / `jev_score.py` forward-score against the
+realized print. Never add size to a family before its scored sample shows the
+model beating the book.**
+
 ## Hard rules (never break)
 - Respect the governor. Halted ⇒ no new buys. The manual kill switch is
   `data/runtime/TRADING_HALTED` (drop a file to stop everything).
