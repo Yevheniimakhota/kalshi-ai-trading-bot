@@ -79,7 +79,8 @@ async def pull_all(series_list) -> dict[str, dict[str, dict]]:
     """Fetch settled markets for each series once (uses the per-series cache)."""
     from src.clients.kalshi_client import KalshiClient
     cache = load_cache()
-    missing = [s for s in series_list if s not in cache]
+    # empty cached results mean an earlier failed fetch: refetch them
+    missing = [s for s in series_list if not cache.get(s)]
     fetched = {}
     if missing:
         c = KalshiClient()
@@ -89,7 +90,8 @@ async def pull_all(series_list) -> dict[str, dict[str, dict]]:
                 fetched[s] = extract_settled(r.get("markets", r) if isinstance(r, dict) else r)
             except Exception as e:
                 print(f"series {s}: fetch failed ({e})", file=sys.stderr)
-                fetched[s] = {}
+                # do NOT cache failures - the next run retries them
+                continue
         await c.close()
     return {**fetched, **{s: cache[s] for s in series_list if s in cache}}
 

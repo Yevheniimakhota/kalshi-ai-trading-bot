@@ -12,12 +12,16 @@ book's calibration (implied median 6.480, realized 6.4839).
 **Rule: diesel alerts are tradeable only when the excess gap is < ~5c AND the
 model still disagrees by > fee+margin after the wholesale adjustment.**
 
-## KXAAAGASD* states (21 state ladders) — UNPROVEN transfer, paper only
-Adjudicated 2026-09-26. Books are near-empty; the national-transfer model shows
-enormous apparent edges (fair ~0.9 vs asks 0.03-0.07). With n=1 state
-observations this is model error until the 21 state series (captured daily)
-reach n>=30 and `score` validates the transfer forward. **No size until the
-scored sample says the model beats these books.**
+## KXAAAGASD* states (21 state ladders) — model PROVEN BAD forward; paper only
+Adjudicated 2026-09-26, then CONFIRMED by the first forward scores (n=498 over
+the 9/25 sweep): book Brier 0.0539 vs agent model 0.0975 vs Jev 0.1526. The
+model was catastrophic on NV (Brier 0.56: priced the 9/26 print median ~5.40
+while the realized print cleared 5.45 — book had it right), bad on WI/IL/IN and
+YouTube views; competitive only on diesel (0.0215 vs book 0.0206). Root cause
+of the NV miss: the sweep priced from a stale state anchor. The morning job now
+re-fetches every state page before pricing. **No size on state gas until a
+re-run sweep with fresh anchors shows model Brier < book Brier forward.** The
+rare big wins (AZ/FL/GA) do not pay for the tail risk at near-empty books.
 
 ## KXAAAGASD national + KXDIESELMON/KXDIESELW — priced fair, hold book
 2026-09-26: gas national and the weekly/monthly diesel ladders are internally
