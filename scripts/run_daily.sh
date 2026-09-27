@@ -47,6 +47,8 @@ PYTHONPATH="$REPO" "$PYBIN" scripts/ornn_data.py ladder >>"$LOG" 2>&1 || true
 PYTHONPATH="$REPO" "$PYBIN" scripts/orshare_data.py snapshot >>"$LOG" 2>&1 || true
 # score any pricing snapshots whose print has landed (model vs book, Brier)
 PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_pricer.py score >>"$LOG" 2>&1 || true
+# score the Jev forward-pricing log against settled markets (model vs Jev vs book)
+PYTHONPATH="$REPO" "$PYBIN" scripts/jev_score.py >>"$LOG" 2>&1 || true
 
 echo "[run_daily] $(date) mode=$MODE -> $LOG (trading loop next)"
 PYTHONPATH="$REPO" "$PYBIN" cli.py daily $FLAG >>"$LOG" 2>&1
