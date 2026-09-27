@@ -42,6 +42,7 @@ PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_data.py today >>"$LOG" 2>&1 || true
 PYTHONPATH="$REPO" "$PYBIN" scripts/aaa_futures.py fetch >>"$LOG" 2>&1 || true
 # Ornn GPU compute price index (KXA100MS-family resolution source)
 PYTHONPATH="$REPO" "$PYBIN" scripts/ornn_data.py fetch >>"$LOG" 2>&1 || true
+PYTHONPATH="$REPO" "$PYBIN" scripts/ornn_data.py ladder >>"$LOG" 2>&1 || true
 # OpenRouter text-share-by-author chart (KX*SHARE resolution source; browser dump)
 PYTHONPATH="$REPO" "$PYBIN" scripts/orshare_data.py snapshot >>"$LOG" 2>&1 || true
 # score any pricing snapshots whose print has landed (model vs book, Brier)

@@ -101,17 +101,112 @@ def strike_breakeven(stats: dict, strike: float) -> dict:
             "verdict_if_flat_at_last": round((n * msf + rem * stats["last"]) / stats["days_in_month"], 4)}
 
 
+GPUS = ["A100 SXM4", "H100 SXM", "H200", "B200", "RTX 5090"]
+GPU_SERIES = {"A100 SXM4": "KXA100MS", "H100 SXM": "KXH100MS",
+              "H200": "KXH200MS", "B200": "KXB200MS"}
+MONTH_DAYS = {1: 31, 2: 28, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30,
+              10: 31, 11: 30, 12: 31}
+
+
+def mc_month_mean(data: list[dict], month: str, recency: int = 30,
+                  n_sims: int = 20000, seed: int = 7) -> dict | None:
+    """Random-walk MC of the month's final mean from the recent change regime.
+
+    ``data`` = dated rows ({"timestamp", "index_value"}). Valid for near months
+    (a handful of remaining prints); the recent drift overextrapolates badly at
+    2-3 month horizons, so treat far months as junk. Tested.
+    """
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    all_vals = [d["index_value"] for d in data]
+    chg = np.diff(np.asarray(all_vals, dtype=float))[-recency:]
+    rows = [d["index_value"] for d in data if d["timestamp"][:7] == month]
+    year, m = int(month[:4]), int(month[5:7])
+    days = MONTH_DAYS[m] + (1 if m == 2 and (year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)) else 0)
+    n = len(rows)
+    msf = sum(rows) / n if rows else 0.0
+    last = all_vals[-1]
+    rem = max(days - n, 0)
+    if rem == 0 or len(chg) == 0:
+        return None
+    samp = rng.choice(chg, size=(n_sims, rem))
+    future = last + np.cumsum(samp, axis=1)
+    means = (n * msf + future.sum(axis=1)) / days
+    return {"means": means, "n": n, "days": days, "msf": msf, "last": last, "rem": rem}
+
+
+def cmd_ladder(month: str | None = None) -> None:
+    """Price the near-month OCPI strike ladders vs live books (snapshot only)."""
+    import asyncio
+    import datetime as dt
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from dotenv import load_dotenv
+    load_dotenv(REPO / ".env")
+    from src.clients.kalshi_client import KalshiClient
+    from aaa_pricer import fetch_book, parse_strike, taker_fee_per_contract
+
+    now = dt.datetime.now()
+    month = month or f"{now.year}-{now.month:02d}"
+    tag = f"{now.year % 100:02d}{['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][now.month-1]}"
+    rows = []
+    async def run():
+        c = KalshiClient()
+        for gpu in GPUS:
+            series = GPU_SERIES.get(gpu)
+            if not series:
+                continue
+            data = load(gpu)
+            mc = mc_month_mean(data, month)
+            if mc is None or mc["rem"] <= 0:
+                continue
+            r = await c.get_markets(series_ticker=series, status="open", limit=200)
+            mks = r.get("markets", r) if isinstance(r, dict) else r
+            for m in mks:
+                parts = m["ticker"].split("-")
+                if parts[1] != tag:
+                    continue
+                strike = parse_strike(m["ticker"])
+                if strike is None:
+                    continue
+                p_yes = float((mc["means"] > strike).mean())
+                book = await fetch_book(c, m["ticker"])
+                cy = min(book["yes_ask"] + taker_fee_per_contract(book["yes_ask"]), 1.0)
+                cn = min((1 - book["yes_bid"]) + taker_fee_per_contract(1 - book["yes_bid"]), 1.0)
+                rows.append({"gpu": gpu, "ticker": m["ticker"], "strike": strike,
+                             "model_p_yes": round(p_yes, 4), **book,
+                             "buy_yes_edge": round(p_yes - cy, 4),
+                             "buy_no_edge": round((1 - p_yes) - cn, 4)})
+        await c.close()
+    asyncio.run(run())
+    rows.sort(key=lambda r: -abs(max(r["buy_yes_edge"], r["buy_no_edge"])))
+    print(f"{'gpu':10s} {'strike':>6s} {'modelP':>7s} {'bid':>5s} {'ask':>5s} {'edgeY':>7s} {'edgeN':>7s}")
+    for r in rows[:15]:
+        print(f"{r['gpu']:10s} {r['strike']:6.2f} {r['model_p_yes']:7.3f} {r['yes_bid']:5.2f} "
+              f"{r['yes_ask']:5.2f} {r['buy_yes_edge']:+7.3f} {r['buy_no_edge']:+7.3f}")
+    out = REPO / "data" / "ornn" / "ladder_pricings"
+    out.mkdir(parents=True, exist_ok=True)
+    ts = dt.datetime.now(dt.UTC).isoformat()
+    (out / f"{ts.replace(':', '').replace('-', '')}.json").write_text(
+        json.dumps({"ts": ts, "month": month, "rows": rows}, indent=1))
+    print(f"snapshot -> {out}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("fetch")
+    sub.add_parser("ladder")
     p = sub.add_parser("strike")
     p.add_argument("--gpu", default="A100 SXM4")
     p.add_argument("--month", required=True, help="e.g. 2026-09")
     p.add_argument("--strike", type=float, required=True)
-    args = ap.parse_args()
+    p3 = ap.parse_args()
+    args = p3
     if args.cmd == "fetch":
         fetch()
+    elif args.cmd == "ladder":
+        cmd_ladder()
     else:
         st = month_stats(args.gpu, args.month)
         if not st:

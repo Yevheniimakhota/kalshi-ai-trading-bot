@@ -216,6 +216,7 @@ data/aaa/futures/
 data/aaa/scores.jsonl
 data/research/
 data/orshare/snapshots/
+data/ornn/ladder_pricings/
 *.jsonl
 # ...but the shipped demo fixtures MUST travel with the repo (cli policy --demo).
 !tests/fixtures/demo_*.jsonl
