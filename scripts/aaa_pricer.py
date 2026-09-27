@@ -280,6 +280,18 @@ def cmd_price(args) -> None:
     path = PRICINGS_DIR / f"{snap['ts'].replace(':', '').replace('-', '')}_{args.series}.json"
     path.write_text(json.dumps(snap, indent=1))
     print(f"snapshot -> {path}")
+    # gap alarm: materialize large model-vs-book gaps for the agent loop
+    threshold = getattr(args, "alert_min", None)
+    if threshold is not None:
+        alerts = [r for r in rows_out if max(r["buy_yes_edge"], r["buy_no_edge"]) >= threshold]
+        if alerts:
+            alerts_dir = REPO / "data" / "aaa" / "alerts"
+            alerts_dir.mkdir(parents=True, exist_ok=True)
+            apath = alerts_dir / f"{snap['ts'].replace(':', '').replace('-', '')}_{args.series}.json"
+            apath.write_text(json.dumps({"ts": snap["ts"], "series": args.series,
+                                         "target_date": args.target,
+                                         "threshold": threshold, "rows": alerts}, indent=1))
+            print(f"ALERT: {len(alerts)} strikes with edge >= {threshold} -> {apath}")
 
 
 MONTHS = {m: i + 1 for i, m in enumerate(
@@ -409,6 +421,8 @@ def main() -> None:
     p.add_argument("--target", required=True, help="target print date, e.g. 2026-09-27")
     p.add_argument("--retail", choices=["diesel", "regular"], default=None,
                    help="AAA column to model (default: regular for *GAS*, diesel otherwise)")
+    p.add_argument("--alert-min", type=float, default=None,
+                   help="write an alerts JSON for strikes with |edge| >= this (e.g. 0.10)")
     sub.add_parser("score")
     args = ap.parse_args()
     if args.cmd == "price":
