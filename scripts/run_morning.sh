@@ -40,3 +40,5 @@ run scripts/aaa_pricer.py score
 run scripts/jev_score.py
 
 echo "[run_morning] $(date) done -> $LOG"
+grep -c ALERT "$LOG" || true
+echo "[run_morning] standing verdicts: data/aaa/alerts/ADJUDICATIONS.md"
