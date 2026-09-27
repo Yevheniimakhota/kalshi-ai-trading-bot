@@ -12,18 +12,19 @@ book's calibration (implied median 6.480, realized 6.4839).
 **Rule: diesel alerts are tradeable only when the excess gap is < ~5c AND the
 model still disagrees by > fee+margin after the wholesale adjustment.**
 
-## KXAAAGASD* states (21 state ladders) — book is SHARP; transfer model loses
-Adjudicated 2026-09-26; CONFIRMED with valid forward scores 2026-09-27 (the
-9/27 print day, 21 states): book Brier 0.0283 vs transfer-model 0.1572 over
-141 strike-observations. NOTE an earlier "model wins by 0.28" reading was a
-SCORER BUG (state gas strikes were scored against the national diesel value -
-every y was 1); after the per-series realized-value fix the book wins clearly.
-The state books are informed (state prints move faster than the national
-average and the books track them). **No size on state gas; revisit only with a
-state-specific change model (own-series distribution, n>=30 per state) that
-beats the book forward.** Diesel national stays at par (0.0889 vs 0.0870 on the
-9/27 day, n=17) - the pre-registered rule fired as written: print 6.4709 landed
-in the adjudicated 6.45-6.47 band.
+## KXAAAGASD* states + national gas — book is NEAR-PERFECT; transfer model dead
+Clean per-series forward scores (2026-09-27 print day, deduped): the book beats
+the national-transfer model in 22 of 23 series. Several state books price at
+Brier 0.0005-0.025 (NJ 0.0012, OH 0.0032, MA 0.0005) — near-perfect against
+the model's 0.03-0.72. National gas: book 0.136 vs model 0.226 (n=5). Diesel
+national: par (0.0821 vs 0.0856, n=9) — the only competitive series, and par
+pays nothing after fees. Two scorer bugs were caught on the way (wrong
+underlying per series; lost dedup) — both fixed; the scorer is now idempotent.
+**VERDICT: the AAA/state family gets NO size from any national-transfer model.
+State gas needs a state-specific model (own-series distribution per state,
+n>=30) that beats a near-perfect book — low odds; deprioritize. The diesel
+path model (wholesale convergence) is the only live development thread here,
+and it must beat par, not the transfer model, to earn size.
 
 ## KXAAAGASD national + KXDIESELMON/KXDIESELW — priced fair, hold book
 2026-09-26: gas national and the weekly/monthly diesel ladders are internally
