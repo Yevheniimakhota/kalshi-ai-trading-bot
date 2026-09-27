@@ -188,13 +188,37 @@ def cmd_price(args) -> None:
 
     retail_col = getattr(args, "retail", None) or (
         "regular" if "GAS" in args.series.upper() else "diesel")
-    rows = aaa_data.load_csv()
-    seq = aaa_data.build_print_series(rows, value_col=retail_col)
+    state = None
+    if args.series.upper().startswith("KXAAAGASD") and len(args.series) > len("KXAAAGASD"):
+        state = args.series[len("KXAAAGASD"):len("KXAAAGASD") + 2].upper()
+    if state:
+        state_rows = aaa_data.load_state(state)
+        seq = aaa_data.build_print_series(state_rows, value_col=retail_col)
+        if not seq:
+            print(f"state {state}: no series yet; run scripts/aaa_data.py fetch_state first",
+                  file=sys.stderr)
+            return 1
+        nat_seq = aaa_data.build_print_series(aaa_data.load_csv(), value_col=retail_col)
+        if len(seq) >= 30:
+            deltas = [s["delta_cents"] for s in seq]
+            model_note = f"state {state} own series (n={len(deltas)})"
+        else:
+            deltas = [s["delta_cents"] for s in nat_seq]
+            model_note = (f"state {state} value with national change distribution "
+                          f"(state n={len(seq)} < 30)")
+        cur = seq[-1]["value"]
+        cur_date = seq[-1]["date"]
+        rows = state_rows  # for wholesale diagnostics
+    else:
+        rows = aaa_data.load_csv()
+        seq = aaa_data.build_print_series(rows, value_col=retail_col)
+        deltas = [s["delta_cents"] for s in seq]
+        cur = seq[-1]["value"]
+        cur_date = seq[-1]["date"]
+        model_note = "national series"
     if not seq:
         print("no AAA series; run scripts/aaa_data.py backfill first", file=sys.stderr)
         return 1
-    deltas = [s["delta_cents"] for s in seq]
-    last = seq[-1]
     streak = 0
     for d in reversed(deltas):
         if d <= -0.4:
@@ -202,8 +226,7 @@ def cmd_price(args) -> None:
         else:
             break
     model = fit_model(deltas, current_streak=streak)
-    cur = last["value"]
-    print(f"last known print {cur} ({last['date']}), current decline streak={streak}, "
+    print(f"{model_note}: last known print {cur} ({cur_date}), decline streak={streak}, "
           f"p_extend={model['p_extend']:.2f}")
 
     async def run():
@@ -247,7 +270,8 @@ def cmd_price(args) -> None:
         "series": args.series,
         "target_date": args.target,
         "last_print": cur,
-        "last_print_date": last["date"],
+        "last_print_date": cur_date,
+        "state": state,
         "streak": streak,
         "p_extend": model["p_extend"],
         "wholesale": wholesale,

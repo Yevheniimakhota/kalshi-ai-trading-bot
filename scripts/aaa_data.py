@@ -201,6 +201,57 @@ def fetch_today(base_url: str = LIVE_URL) -> dict | None:
     return row
 
 
+def states_csv_path(state: str) -> Path:
+    return AAA_DIR / "states" / f"{state.lower()}.csv"
+
+
+def fetch_state(state: str, base_url: str = "https://gasprices.aaa.com/?state={state}") -> dict | None:
+    """Fetch one state's page and merge its row into data/aaa/states/<state>.csv.
+
+    Same page structure and CSV schema as the national series. Idempotent per
+    calendar day (the day's latest fetch wins).
+    """
+    resp = httpx.get(base_url.format(state=state.upper()), timeout=30, headers=HEADERS,
+                     follow_redirects=True)
+    if resp.status_code != 200 or "Current Avg" not in resp.text:
+        print(f"{state}: fetch failed status={resp.status_code}", file=sys.stderr)
+        return None
+    p = parse_aaa_page(resp.text)
+    if not p:
+        print(f"{state}: no table", file=sys.stderr)
+        return None
+    now = dt.datetime.now()
+    path = states_csv_path(state)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = load_csv_from(path)
+    rows[now.date().isoformat()] = _row(now.date().isoformat(), p, "live",
+                                        now.strftime("%Y%m%d%H%M%S"))
+    write_csv_to(path, rows)
+    return rows[now.date().isoformat()]
+
+
+def load_csv_from(path: Path) -> dict[str, dict]:
+    rows: dict[str, dict] = {}
+    if path.exists():
+        with open(path) as f:
+            for r in csv.DictReader(f):
+                rows[r["date"]] = r
+    return rows
+
+
+def write_csv_to(path: Path, rows: dict[str, dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=COLUMNS)
+        w.writeheader()
+        for date in sorted(rows):
+            w.writerow(rows[date])
+
+
+def load_state(state: str) -> dict[str, dict]:
+    return load_csv_from(states_csv_path(state))
+
+
 def build_print_series(rows: dict[str, dict], value_col: str = "diesel") -> list[dict]:
     """Stitch page pairs (cur, yes) into an ordered sequence of consecutive prints.
 
@@ -224,13 +275,18 @@ def build_print_series(rows: dict[str, dict], value_col: str = "diesel") -> list
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("command", choices=["backfill", "today"], help="subcommand")
+    ap.add_argument("command", choices=["backfill", "today", "states"], help="subcommand")
     ap.add_argument("--from", dest="from_date", default="20250101")
     ap.add_argument("--to", dest="to_date", default="")
     ap.add_argument("--workers", type=int, default=4)
     args = ap.parse_args()
     if args.command == "backfill":
         backfill_wayback(args.from_date, args.to_date, args.workers)
+    elif args.command == "states":
+        for st in ["NV", "WA", "OR", "MA", "NJ", "CA", "AZ", "CO", "CT", "FL", "GA",
+                   "IL", "MI", "MN", "NC", "NY", "OH", "PA", "TX", "VA", "WI"]:
+            fetch_state(st)
+            time.sleep(2)
     else:
         fetch_today()
 
