@@ -53,3 +53,26 @@ error and the unknown information a large seller may hold).
 4. If a market-implied probability disagrees with the break-even math by a
    wide margin, check first whether the *seller* may hold hourly (paid) data
    the public feed doesn't show — the public feed is daily-settled values only.
+
+## 2026-09-28 morning update: the regime break happened (position at risk)
+
+The 9/27 print came in **0.91 — a second consecutive all-time low** (1.02 → 0.95
+→ 0.91, −4c and −4c). Rule 3's warning fired exactly. Current state:
+
+* Sep mean-so-far 1.01037 (n=27); 3 prints left (9/28/29/30). The >1.000 strike
+  loses iff the remaining 3 average ≤ 0.9067. Flat at 0.91 the mean lands 1.0003 —
+  a coin-flip decided by whether ANY of the last prints prints ≤ 0.90.
+* Book repriced to YES ask 0.29 (130 deep) / 0.38 (1051 deep), no YES bids:
+  market P(YES) ≈ 0.29–0.38. Our bootstrap: P(YES) 0.53 full-history deltas,
+  0.39 recent-30; P(NO)=0.94 if the −2c/day drift continues, 0.44 if flat.
+* Position: 115 YES, cost $61.35 (avg 0.533). Exit at the 0.38 bid ≈ $41.8 net.
+* Decision (memo in decision journal): exit ~half into the 0.38 bid; hold the
+  rest with a hard exit if the 9/28 print ≤ 0.90. No adds — model no longer
+  beats the market; remaining exposure is regime risk, not edge.
+* Cross-GPU check: H100 −18%/5d and H200 −8%/5d confirm a compute-price
+  selloff, but B200 is RISING — A100/H100/H200 are being displaced; treat
+  "regime" as gen-specific displacement, not uniform oversupply.
+* Data lesson: the daily series is UTC-day-settled and the 4pm-ET publish time
+  means the previous day's print is missing from a morning fetch — always
+  refetch before break-even math (the 0.91 print was invisible in the 9/27
+  morning cache).

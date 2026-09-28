@@ -346,12 +346,97 @@ def build_print_series(rows: dict[str, dict], value_col: str = "diesel") -> list
     return seq
 
 
+def backfill_state(state: str, from_date: str = "20250101", to_date: str = "",
+                   max_workers: int = 4, sleep_s: float = 0.3) -> int:
+    """Fetch + parse Wayback snapshots of one state's AAA gauge page.
+
+    Same mechanics as backfill_wayback but for gasprices.aaa.com/?state=<ST>.
+    Merges into data/aaa/states/<st>.csv; never overwrites a live-captured row.
+    Resumable: raw pages cached under data/aaa/raw/states/<ST>/.
+    """
+    params = {
+        "url": f"gasprices.aaa.com/?state={state}",
+        "from": from_date,
+        "to": to_date or dt.datetime.now().strftime("%Y%m%d"),
+        "output": "json",
+        "fl": "timestamp,statuscode",
+        "filter": "statuscode:200",
+        "collapse": "timestamp:8",
+        "limit": "3000",
+    }
+    snaps = None
+    for attempt in range(6):
+        try:
+            r = httpx.get(CDX_URL, params=params, timeout=60)
+            snaps = r.json()[1:]
+            break
+        except Exception as e:
+            print(f"{state}: CDX attempt {attempt+1} failed ({e}); backing off",
+                  file=sys.stderr)
+            time.sleep(20 * (attempt + 1))
+    if snaps is None:
+        print(f"{state}: CDX unavailable after retries; run again later", file=sys.stderr)
+        return 0
+    raw_dir = RAW_DIR / "states" / state.upper()
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    print(f"{state}: CDX returned {len(snaps)} snapshots")
+
+    def fetch(ts: str):
+        path = raw_dir / f"{ts}.html"
+        if path.exists() and path.stat().st_size > 20000:
+            return ts, True
+        try:
+            resp = httpx.get(SNAP_URL.format(ts=ts), timeout=45, headers=HEADERS,
+                             follow_redirects=True)
+            if resp.status_code == 200 and "Current Avg" in resp.text:
+                path.write_text(resp.text)
+                return ts, True
+        except Exception:
+            pass
+        time.sleep(sleep_s)
+        return ts, False
+
+    from concurrent.futures import ThreadPoolExecutor
+    got = 0
+    with ThreadPoolExecutor(max_workers=max_workers) as ex:
+        for ts, ok in ex.map(fetch, [s[0] for s in snaps]):
+            got += ok
+    print(f"{state}: cached {got}/{len(snaps)} pages")
+
+    path = states_csv_path(state)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rows = load_csv_from(path)
+    added = 0
+    for ts, _ in snaps:
+        f = raw_dir / f"{ts}.html"
+        if not f.exists():
+            continue
+        p = parse_aaa_page(f.read_text())
+        if not p:
+            continue
+        day = dt.datetime.strptime(ts[:8], "%Y%m%d").date().isoformat()
+        old = rows.get(day)
+        # keep the last snapshot of each day; never displace a live capture
+        if old and (old.get("src") != "wayback" or old.get("snapshot_ts", "") >= ts):
+            continue
+        if not old:
+            added += 1
+        rows[day] = _row(day, p, "wayback", ts)
+    write_csv_to(path, rows)
+    seq = build_print_series(rows, value_col="regular")
+    print(f"{state}: {added} new wayback rows, series n={len(seq)} -> {path}")
+    return len(rows)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("command", choices=["backfill", "today", "states"], help="subcommand")
+    ap.add_argument("command", choices=["backfill", "today", "states", "backfill_state"],
+                    help="subcommand")
     ap.add_argument("--from", dest="from_date", default="20250101")
     ap.add_argument("--to", dest="to_date", default="")
     ap.add_argument("--workers", type=int, default=4)
+    ap.add_argument("--state", action="append", default=[],
+                    help="state code for backfill_state (repeatable)")
     args = ap.parse_args()
     if args.command == "backfill":
         backfill_wayback(args.from_date, args.to_date, args.workers)
@@ -360,6 +445,12 @@ def main() -> None:
                    "IL", "MI", "MN", "NC", "NY", "OH", "PA", "TX", "VA", "WI"]:
             fetch_state(st)
             time.sleep(2)
+    elif args.command == "backfill_state":
+        states = args.state or ["NV", "WA", "OR", "MA", "NJ", "CA", "AZ", "CO", "CT",
+                                "FL", "GA", "IL", "MI", "MN", "NC", "NY", "OH", "PA",
+                                "TX", "VA", "WI"]
+        for st in states:
+            backfill_state(st, args.from_date, args.to_date, args.workers)
     else:
         fetch_today()
 
