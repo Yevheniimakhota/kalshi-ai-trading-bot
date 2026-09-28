@@ -1,60 +1,54 @@
 # Close-out scalping study (the "buy at 0.99" strategy) — measured
 
-_Built 2026-09-28 by the trading loop. Data: hourly candlesticks for 1,059 settled
-markets (Sep 14–28) across 15 series (gas/diesel ladders, OpenRouter share,
-token-use, Trump-say, Truth Social pace, MLB, misc.). Tool: `scripts/scalp_study.py`
-(candles cached under `data/backtest/scalp_candles/`)._
+_Built 2026-09-28 by the trading loop (two independent samples agree). Data:
+hourly candles for 1,059 settled markets across 15 series + a 2,683-market
+1-minute-candle study spanning the full exchange (Sep 14–17). Tools:
+`scripts/scalp_study.py`, `scripts/scalp_collect.py`; caches under
+`data/backtest/scalp_candles/` and `data/runtime/scalp_study/`._
 
-## The structural finding that kills the naive version
+## The naive taker version is dead — twice over
 
-**When the last bid is ≥ 0.99, the ask is 1.00 in 239/239 cases.** The last 1% is
-never offered to buyers — the sell side has already gone to parity by the time the
-bid prints 0.99. Buying "at 0.99" as a taker is not a trade that exists.
+1. **Structurally unfillable**: when the last bid is ≥ 0.99, the ask is 1.00 in
+   239/239 hourly-candle cases. The last cent is never offered to buyers.
+2. **Adverse selection at the ask**: buying AT the 0.99 ask when it does appear:
+   354 fills, **93.8% win, EV −6.3% per trade** (1-min study). You get filled at
+   0.99 precisely when the outcome is about to flip. The same pattern kills the
+   [0.97,0.99) bucket (EV −3.1%/flip) and [0.95,0.97) (−7.3%).
 
-The level is right, though: of markets whose last 1h-pre-close bid was ≥ 0.99,
-**239/239 settled YES** (also 215/215 at 3h, 166/166 at 6h, 35/35 and 27/27 at
-24h/48h). At bid 0.90–0.95 the win rate drops to 89–94%. So near-settled ladders
-at ≥ 0.99 are genuinely near-certain — you just can't buy the last cent.
+## The naive maker version is dead too
 
-## What IS buyable
+Resting a standing bid at 0.98–0.99 across the exchange: **111 fills, 77.5% win**
+(1-min study, 6-min standing bid). Your resting bid is a free option for informed
+sellers — it fills exactly when news lands (the losses include KXINXHUD index
+hourlies, KXBTCD, temperature markets). At ~0.985 average entry that is deeply
+negative EV.
 
-Entries with **bid ≥ 0.97 and ask ≤ 0.99** (a lazy seller still sitting at 0.99 or
-below): 30 observations in 13.3 days (**2.3/day**), average entry 0.989, **30/30
-settled YES** (15 gas ladders, 9 diesel, 4 MLB, 2 Truth Social).
+For contrast, the *observational* population (bids already standing at ≥ 0.99 for
+6+ minutes, not offers you made) settles **112/112 YES**. The market's own
+persistent 0.99 bids are informationally right — but that edge belongs to whoever
+is already there for the right reason, not to a mechanical buyer.
 
-Fee math (fee = round-up(0.07 × C × p × (1−p)) per ORDER, so a 100-contract clip
-at 0.989 pays ~$0.07):
+## What the data actually supports
 
-* net win ≈ +1.04% per flip, net loss ≈ −99.0%
-* breakeven win rate ≈ 99.1%
-* in-sample 30/30 — but the rule-of-three bound on 0 failures in 30 only says the
-  true failure rate is < 10%. Not enough. Need n ≈ 300+ (≈ 4 months of paper
-  tracking) before the bound reaches the 1% that matters.
-* Compounding note: one full loss at 0.99 wipes ~460 compounding wins. Full-stake
-  compounding requires true P(win) ≳ 99.9%; Kelly sizing for a 99.5%-true edge
-  says ~0.5% of bankroll per flip. Either way, per-flip size must be small.
+* The ≥ 0.99 level is real: bid ≥ 0.99 at 1h-24h lead settled 242/242, 155/156
+  (one loss: a copper market), 126/126, 28/28. The informational signal is strong.
+* The only version worth testing is the **model-gated maker close-out**: rest
+  0.98–0.99 ONLY on markets where our own data model prices fair ≥ 0.995 — for
+  us that means the gas/diesel ladders we price daily (the opportunity
+  concentration matches: ~20/day markets touch ≥0.99 bid, ~2.3/day fillable
+  ≤0.99 in our families). The 77.5% fill statistic does NOT measure this version,
+  because those fills were not model-gated.
+* Even then: fee math needs a 100-ct clip (~$0.07 order fee at 0.99 → +0.93% net
+  win, breakeven 99.1%), one loss wipes ~460 compounding wins, so per-flip size
+  stays small forever. Paper-log every resting bid and fill for 4–6 weeks and
+  require ≥ 100 fills with 0 failures before any real size.
 
-## The version that can actually work: maker close-outs
+## Verdict for the loop
 
-Instead of taking, **rest a bid at 0.98–0.99 on markets whose outcome is already
-locked by the resolution source** (published print, confirmed result). Then:
-
-* you're the maker: fee ≈ 0.0175 × C × p × (1−p) (quarter taker), a 100-ct order
-  at 0.99 pays ~$0.02 → net win ≈ +0.98%;
-* fills come from panic sellers and lazy limit orders — the 17/313 ask-at-0.99
-  episodes show they exist;
-* the adverse-selection risk is real: the seller at 0.99 may know the resolution
-  source moved. Mitigation: only rest when our own data model prices fair ≥ 0.995
-  (for the gas/diesel ladders we have exactly that pricer);
-* measure first: paper-log every resting bid + fill for ~4-6 weeks before any
-  real size. Target sample ≥ 100 fills with 0 failures before scaling.
-
-## Verdict
-
-* Taker version: **dead** — structurally unfillable at 0.99 (ask always 1.00).
-* Maker version: **plausible, small, and measurable** — ~2-5 fillable opportunities
-  per day concentrated in the gas/diesel ladders where we already run a pricer.
-  Treat as a low-yield carry overlay with strict model confirmation, not a core
-  strategy; the tail risk (one loss = ~100x the win) caps it at small size forever.
-* Not yet traded. Needs: (1) paper log of resting-bid fills, (2) Ryan's historical
-  manual fills if he has records, (3) model-fair ≥ 0.995 gate on every fill.
+Do not trade any mechanical version now. Keep the study as a standing negative
+result: **the 99c close-out loses on both the taker side (adverse selection at the
+ask, 93.8%/−6.3% EV) and the maker side (77.5% on resting fills) unless entries
+are gated by an independent model of the resolution source.** The follow-up that
+could change the verdict: Ryan's own historical fills from when it "worked" — if
+those were on source-locked outcomes with judgment gating, the edge was the
+judgment, and we should replicate the gate, not the mechanic.
