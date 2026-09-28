@@ -257,6 +257,14 @@ def fetch_today(base_url: str = LIVE_URL) -> dict | None:
     now = dt.datetime.now()
     day = now.date().isoformat()
     rows = load_csv()
+    # staleness guard: the page updates ~3-4am ET; a pre-update capture repeats
+    # the previous day's (cur, yes) pair. Merging it would fabricate a duplicate
+    # print and corrupt the streak/delta series (2026-09-28 lesson).
+    prior = rows.get(max(rows) if rows else "", None)
+    if prior and prior.get("date") != day and _same_pair(row := _row(day, p, "live", ""), prior):
+        print(f"stale pair for {day} (identical to {prior['date']}); NOT merging",
+              file=sys.stderr)
+        return None
     row = _row(day, p, "live", now.strftime("%Y%m%d%H%M%S"))
     rows[day] = row
     write_csv(rows)
@@ -266,6 +274,19 @@ def fetch_today(base_url: str = LIVE_URL) -> dict | None:
 
 def states_csv_path(state: str) -> Path:
     return AAA_DIR / "states" / f"{state.lower()}.csv"
+
+
+def _same_pair(a: dict, b: dict) -> bool:
+    """True if two rows carry the same (cur, yes) values for both fuels."""
+    for col in ("diesel", "regular"):
+        try:
+            if abs(float(a.get(col, 0)) - float(b.get(col, 0))) > 1e-9:
+                return False
+            if abs(float(a.get(col + "_yes", 0)) - float(b.get(col + "_yes", 0))) > 1e-9:
+                return False
+        except (TypeError, ValueError):
+            return False
+    return True
 
 
 def fetch_state(state: str, base_url: str = "https://gasprices.aaa.com/?state={state}") -> dict | None:
@@ -294,13 +315,17 @@ def fetch_state(state: str, base_url: str = "https://gasprices.aaa.com/?state={s
         print(f"{state}: no table", file=sys.stderr)
         return None
     now = dt.datetime.now()
+    day = now.date().isoformat()
     path = states_csv_path(state)
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = load_csv_from(path)
-    rows[now.date().isoformat()] = _row(now.date().isoformat(), p, "live",
-                                        now.strftime("%Y%m%d%H%M%S"))
+    prior = rows.get(max(rows) if rows else "", None)
+    if prior and prior.get("date") != day and _same_pair(_row(day, p, ""), prior):
+        print(f"{state}: stale pair for {day}; NOT merging", file=sys.stderr)
+        return None
+    rows[day] = _row(day, p, "live", now.strftime("%Y%m%d%H%M%S"))
     write_csv_to(path, rows)
-    return rows[now.date().isoformat()]
+    return rows[day]
 
 
 def load_csv_from(path: Path) -> dict[str, dict]:
