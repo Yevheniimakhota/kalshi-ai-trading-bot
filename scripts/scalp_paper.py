@@ -75,9 +75,9 @@ def settle(known_actuals: dict) -> int:
         actual = known_actuals.get((e["series"], e["target"]))
         if actual is None:
             continue
-        y = 1 if actual > int(e["ticker"].rsplit("-", 1)[-1].lstrip("T")) / 10000 else 0
+        # strike tail: 'T6.435' (diesel) or '5.5050' (state gas) - dollars in both
         strike = float(e["ticker"].rsplit("-", 1)[-1].lstrip("T"))
-        y = 1 if actual > strike / 10000 else 0
+        y = 1 if actual > strike else 0
         fee = fee_order(e["qty"], e["entry"]) / e["qty"]
         pnl = (1 - e["entry"] - fee) if y else -(e["entry"] + fee)
         e.update({"status": "settled", "y": y, "actual": actual,
