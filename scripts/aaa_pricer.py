@@ -124,6 +124,67 @@ def cdf_from_samples(vals: np.ndarray, x: float) -> float:
     return float((vals <= x).mean())
 
 
+def fit_state_transfer(state_rows: dict, nat_rows: dict, retail_col: str,
+                       min_common: int = 60) -> dict | None:
+    """State print model: state_delta = alpha + beta * nat_delta + residual.
+
+    The 2026-09-27 scoring showed state deltas are NOT national deltas (states
+    moved -1.2 to -2.8c in one print while the national moved -0.76c) - applying
+    the national change distribution to a state anchor produced one-signed errors
+    up to +0.84 Brier. Wayback backfills (scripts/aaa_data.py backfill_state)
+    give ~150-450 matched print pairs per state, enough to fit beta and bootstrap
+    the state residual. Returns None when the matched sample is too thin.
+
+    Pure function; covered by tests.
+    """
+    import numpy as np
+    from collections import defaultdict
+    nat_seq = aaa_data.build_print_series(nat_rows, value_col=retail_col)
+    st_seq = aaa_data.build_print_series(state_rows, value_col=retail_col)
+    nat_by_date = {s["date"]: s["delta_cents"] for s in nat_seq}
+    pairs = [(s["delta_cents"], nat_by_date[s["date"]]) for s in st_seq
+             if s["date"] in nat_by_date]
+    if len(pairs) < min_common:
+        return None
+    st = np.array([p[0] for p in pairs], dtype=float)
+    na = np.array([p[1] for p in pairs], dtype=float)
+    beta, alpha = np.polyfit(na, st, 1)
+    resid = st - (alpha + beta * na)
+    corr = float(np.corrcoef(st, na)[0, 1]) if len(st) > 2 else 0.0
+    return {"kind": "transfer", "alpha": float(alpha), "beta": float(beta),
+            "resid": resid, "n_common": len(pairs), "corr": corr}
+
+
+def transfer_fair_yes(model: dict, nat_model: dict, cur: float, strike: float,
+                      n_draws: int = 20000, seed: int = 7) -> float:
+    """P(state print > strike) under the transfer model.
+
+    Draws national deltas from the national model's continuation/break blend
+    (weight p_extend), maps them through alpha + beta*delta, and adds bootstrapped
+    state residuals.
+    """
+    import numpy as np
+    rng = np.random.default_rng(seed)
+    pe = nat_model.get("p_extend", 0.0)
+    pool_cont = nat_model.get("cont")
+    pool_break = nat_model.get("break")
+    pool = nat_model.get("uncond")
+    use_cont = (rng.random(n_draws) < pe) if (pool_cont is not None and len(pool_cont) and pe > 0) else np.zeros(n_draws, dtype=bool)
+    nat = np.empty(n_draws)
+    n_cont = int(use_cont.sum())
+    if n_cont:
+        nat[use_cont] = rng.choice(np.asarray(pool_cont, dtype=float), n_cont, replace=True)
+    if n_cont < n_draws:
+        src_pool = pool_break if (pool_break is not None and len(pool_break) and pe > 0) else pool
+        if src_pool is None or len(src_pool) == 0:
+            src_pool = pool
+        nat[~use_cont] = rng.choice(np.asarray(src_pool, dtype=float), n_draws - n_cont, replace=True)
+    resid = np.asarray(model["resid"], dtype=float)
+    draws = model["alpha"] + model["beta"] * nat + rng.choice(resid, n_draws, replace=True)
+    x = (strike - cur) * 100
+    return float((draws > x).mean())
+
+
 def forecast_cdf(model: dict, x: float) -> float:
     """P(next change <= x) blending continuation and break branches."""
     pe = model["p_extend"]
@@ -192,6 +253,7 @@ def cmd_price(args) -> None:
     state = None
     if args.series.upper().startswith("KXAAAGASD") and len(args.series) > len("KXAAAGASD"):
         state = args.series[len("KXAAAGASD"):len("KXAAAGASD") + 2].upper()
+    transfer = None
     if state:
         state_rows = aaa_data.load_state(state)
         seq = aaa_data.build_print_series(state_rows, value_col=retail_col)
@@ -199,10 +261,19 @@ def cmd_price(args) -> None:
             print(f"state {state}: no series yet; run scripts/aaa_data.py fetch_state first",
                   file=sys.stderr)
             return 1
-        nat_seq = aaa_data.build_print_series(aaa_data.load_csv(), value_col=retail_col)
-        if len(seq) >= 30:
+        nat_rows = aaa_data.load_csv()
+        nat_seq = aaa_data.build_print_series(nat_rows, value_col=retail_col)
+        transfer = fit_state_transfer(state_rows, nat_rows, retail_col)
+        if transfer is not None:
+            # national deltas drive both the streak logic and the transfer map
+            deltas = [s["delta_cents"] for s in nat_seq]
+            model_note = (f"state {state} transfer model: alpha={transfer['alpha']:+.2f} "
+                          f"beta={transfer['beta']:+.2f} corr={transfer['corr']:.2f} "
+                          f"resid_sd={float(np.std(transfer['resid'])):.2f}c "
+                          f"(n={transfer['n_common']} matched prints)")
+        elif len(seq) >= 30:
             deltas = [s["delta_cents"] for s in seq]
-            model_note = f"state {state} own series (n={len(deltas)})"
+            model_note = f"state {state} own series (n={len(seq)})"
         else:
             deltas = [s["delta_cents"] for s in nat_seq]
             model_note = (f"state {state} value with national change distribution "
@@ -212,6 +283,7 @@ def cmd_price(args) -> None:
         rows = state_rows  # for wholesale diagnostics
     else:
         rows = aaa_data.load_csv()
+        nat_rows = rows
         seq = aaa_data.build_print_series(rows, value_col=retail_col)
         deltas = [s["delta_cents"] for s in seq]
         cur = seq[-1]["value"]
@@ -239,7 +311,10 @@ def cmd_price(args) -> None:
             strike = parse_strike(m["ticker"])
             if strike is None:
                 continue
-            fair_yes = 1.0 - forecast_cdf(model, (strike - cur) * 100)
+            if transfer is not None:
+                fair_yes = transfer_fair_yes(transfer, model, cur, strike)
+            else:
+                fair_yes = 1.0 - forecast_cdf(model, (strike - cur) * 100)
             book = await fetch_book(c, m["ticker"])
             edges = fee_aware_edges(fair_yes, book)
             out_rows.append({"ticker": m["ticker"], "strike": strike,
