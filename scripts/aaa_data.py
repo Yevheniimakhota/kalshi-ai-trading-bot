@@ -462,6 +462,8 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--state", action="append", default=[],
                     help="state code for backfill_state (repeatable)")
+    ap.add_argument("--sleep", type=float, default=None,
+                    help="per-fetch sleep for backfill_state (rate-limit control)")
     args = ap.parse_args()
     if args.command == "backfill":
         backfill_wayback(args.from_date, args.to_date, args.workers)
@@ -475,7 +477,8 @@ def main() -> None:
                                 "FL", "GA", "IL", "MI", "MN", "NC", "NY", "OH", "PA",
                                 "TX", "VA", "WI"]
         for st in states:
-            backfill_state(st, args.from_date, args.to_date, args.workers)
+            kw = {"sleep_s": args.sleep} if args.sleep else {}
+            backfill_state(st, args.from_date, args.to_date, args.workers, **kw)
     else:
         fetch_today()
 
