@@ -62,3 +62,11 @@ Buying near-certain contracts at 0.99 for the last 1%, compounding. The math:
 
 The repo's old `docs/QUICK_FLIP_STRATEGY.md` (1–20c lottery scalps with AI prediction) is a
 different, unshipped idea and I don't rate it; your 99c version is the one worth testing.
+
+## 6. Portfolio mark-to-market (2026-09-28 ~08:00 UTC, equity assumed $1000 — confirm)
+
+Cost $762.75 across 33 positions; conservative bid marks $523 (unrealized ≈ −$240, overstated
+where books have no bids — the OpenRouter markets are settled-but-unpaid (≈ −$70 expected) and
+the A100 book has no YES bids (real exit ≈ 0.38 → −$19.6 not −$61)). Real clusters:
+paranormal/KXALIENS +$12 (biggest single exposure $150), nobel +$14.5, trump_say −$20,
+diesel weekly/monthly ≈ −$11 to −$1, ORNN as above. Full report: `scripts/portfolio_risk.py`.
