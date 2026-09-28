@@ -38,12 +38,14 @@ CUTOFFS_H = [1, 3, 6, 24, 48]
 BUCKETS = [(0.99, 1.01), (0.97, 0.99), (0.95, 0.97), (0.90, 0.95)]
 
 
-async def fetch_settled(c, days: int, limit: int):
+async def fetch_settled(c, days: int, limit: int, series: str | None = None):
     now = int(time.time())
     min_close = now - days * 86400
     out, cursor = [], None
     while len(out) < limit:
         params = {"status": "settled", "limit": 1000, "max_close_ts": now}
+        if series:
+            params["series_ticker"] = series
         if cursor:
             params["cursor"] = cursor
         r = await c._make_authenticated_request("GET", "/trade-api/v2/markets",
@@ -124,10 +126,21 @@ async def main():
     ap.add_argument("--days", type=int, default=10)
     ap.add_argument("--limit", type=int, default=1200)
     ap.add_argument("--concurrency", type=int, default=5)
+    ap.add_argument("--series", action="append", default=None)
+    ap.add_argument("--out", default=None)
     args = ap.parse_args()
 
     c = KalshiClient()
-    settled = await fetch_settled(c, args.days, args.limit)
+    if args.series:
+        settled = []
+        for s in args.series:
+            part = await fetch_settled(c, args.days, args.limit, series=s)
+            print(f"  {s}: {len(part)} settled (recent)")
+            settled.extend(part)
+        seen = set()
+        settled = [m for m in settled if not (m["ticker"] in seen or seen.add(m["ticker"]))]
+    else:
+        settled = await fetch_settled(c, args.days, args.limit)
     print(f"settled sample: {len(settled)} markets "
           f"(close_time {time.strftime('%F %H:%M', time.gmtime(min(m['close_ts'] for m in settled)))} .. "
           f"{time.strftime('%F %H:%M', time.gmtime(max(m['close_ts'] for m in settled)))})")
@@ -171,10 +184,11 @@ async def main():
         rec["max_bid_1h"] = mb
         rec["max_bid_lead_h"] = (m["close_ts"] - mb_ts) / 3600 if mb_ts else None
         rows.append(rec)
-    with open(OUT, "w") as f:
+    out_path = Path(args.out) if args.out else OUT
+    with open(out_path, "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
-    print(f"wrote {len(rows)} observation rows -> {OUT}")
+    print(f"wrote {len(rows)} observation rows -> {out_path}")
 
 
 if __name__ == "__main__":

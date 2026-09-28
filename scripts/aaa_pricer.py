@@ -156,7 +156,8 @@ def fit_state_transfer(state_rows: dict, nat_rows: dict, retail_col: str,
 
 
 def transfer_fair_yes(model: dict, nat_model: dict, cur: float, strike: float,
-                      n_draws: int = 20000, seed: int = 7) -> float:
+                      n_draws: int = 20000, seed: int = 7,
+                      drift_shift: float | None = None) -> float:
     """P(state print > strike) under the transfer model.
 
     Draws national deltas from the national model's continuation/break blend
@@ -179,6 +180,8 @@ def transfer_fair_yes(model: dict, nat_model: dict, cur: float, strike: float,
         if src_pool is None or len(src_pool) == 0:
             src_pool = pool
         nat[~use_cont] = rng.choice(np.asarray(src_pool, dtype=float), n_draws - n_cont, replace=True)
+    if drift_shift is not None:
+        nat = nat + drift_shift
     resid = np.asarray(model["resid"], dtype=float)
     draws = model["alpha"] + model["beta"] * nat + rng.choice(resid, n_draws, replace=True)
     x = (strike - cur) * 100
@@ -301,6 +304,22 @@ def cmd_price(args) -> None:
     model = fit_model(deltas, current_streak=streak)
     print(f"{model_note}: last known print {cur} ({cur_date}), decline streak={streak}, "
           f"p_extend={model['p_extend']:.2f}")
+    # wholesale convergence BEFORE pricing (the daily forecast is gap-aware:
+    # two days of live scoring showed the streak-only model underpricing the
+    # decline while the excess gap was elevated)
+    import numpy as np
+    wholesale = None
+    drift = None
+    try:
+        import aaa_futures
+        sym = "HO=F" if retail_col == "diesel" else "RB=F"
+        wholesale = aaa_futures.convergence(rows, sym, retail_col)
+        drift = convergence_drift_c((wholesale or {}).get("excess_gap_cents"))
+        if drift is not None:
+            print(f"gap-aware drift: {drift:+.2f}c/day (excess "
+                  f"{wholesale['excess_gap_cents']}c)")
+    except Exception as e:
+        print(f"wholesale diagnostics unavailable: {e}", file=sys.stderr)
 
     async def run():
         c = KalshiClient()
@@ -312,7 +331,14 @@ def cmd_price(args) -> None:
             if strike is None:
                 continue
             if transfer is not None:
-                fair_yes = transfer_fair_yes(transfer, model, cur, strike)
+                fair_yes = transfer_fair_yes(transfer, model, cur, strike,
+                                             drift_shift=(drift - float(np.mean([s["delta_cents"] for s in nat_seq])))
+                                             if drift is not None else None)
+            elif drift is not None:
+                rng = np.random.default_rng(11)
+                draws = sample_blend(model, 20000, rng)
+                draws = draws + (drift - float(draws.mean()))
+                fair_yes = float((draws > (strike - cur) * 100).mean())
             else:
                 fair_yes = 1.0 - forecast_cdf(model, (strike - cur) * 100)
             book = await fetch_book(c, m["ticker"])
@@ -330,17 +356,6 @@ def cmd_price(args) -> None:
         print(f"{r['ticker']:32s} {r['fair_yes']:8.3f} {r['yes_bid']:5.2f} {r['yes_ask']:5.2f} "
               f"{r['buy_yes_edge']:+9.3f} {r['buy_no_edge']:+9.3f}")
     PRICINGS_DIR.mkdir(parents=True, exist_ok=True)
-    # wholesale convergence diagnostics (the 2026-09-26 lesson: retail history
-    # alone misses the dominant driver; futures lag drives multi-day declines)
-    wholesale = None
-    try:
-        import aaa_futures
-        sym = "HO=F" if retail_col == "diesel" else "RB=F"
-        wholesale = aaa_futures.convergence(rows, sym, retail_col)
-        if wholesale:
-            print("wholesale:", wholesale)
-    except Exception as e:
-        print(f"wholesale diagnostics unavailable: {e}", file=sys.stderr)
     snap = {
         "ts": dt.datetime.now(dt.UTC).isoformat(),
         "series": args.series,
@@ -420,33 +435,81 @@ async def settled_print_bracket(series: str, target: str) -> dict | None:
         await c.close()
 
 
+# Empirical convergence regression (fit 2026-09-28 on n=343 matched
+# print/futures days, 2025-03..2026-09): next retail delta (cents) vs the
+# excess retail-minus-wholesale gap (cents), r = -0.34:
+#   delta_next = 0.574 - 0.0298 * excess_gap_cents
+# i.e. the gap closes ~3%/day in expectation. Replaces the older
+# min(2.2c, 0.03*excess) rule, which overpriced convergence speed vs both the
+# regression and two days of live book evidence (the book priced -1.1 to
+# -1.3c/day while the rule said -1.7c).
+CONV_INTERCEPT_C = 0.574
+CONV_SLOPE_PER_CENT = 0.0298
+CONV_APPLY_MIN_CENT = 5.0
+
+
+def convergence_drift_c(excess_gap_cents: float | None) -> float | None:
+    """Expected next-day retail drift (cents) from the excess wholesale gap.
+
+    Pure; tested. Returns None when the gap is not elevated enough to trust.
+    """
+    if excess_gap_cents is None or excess_gap_cents <= CONV_APPLY_MIN_CENT:
+        return None
+    return CONV_INTERCEPT_C - CONV_SLOPE_PER_CENT * excess_gap_cents
+
+
+def sample_blend(model: dict, n: int, rng) -> "object":
+    """Draw next-day deltas from the blended forecast CDF by numeric inversion.
+
+    Pure (given rng); tested.
+    """
+    import numpy as np
+    us = rng.random(n)
+    lo = np.full(n, -10.0)
+    hi = np.full(n, 10.0)
+    for _ in range(24):  # bisection to ~0.0001c
+        mid = (lo + hi) / 2
+        vals = np.array([forecast_cdf(model, m) for m in mid])
+        go_left = vals >= us
+        hi = np.where(go_left, mid, hi)
+        lo = np.where(go_left, lo, mid)
+    return (lo + hi) / 2
+
+
 def fit_path_model(deltas: list[float], excess_gap_cents: float | None,
                    current_streak: int = 0) -> dict:
     """Multi-day path model for weekly/monthly print ladders.
 
-    Daily delta distribution = empirical consecutive-print changes; the drift
-    is max(empirical mean, -convergence_rate) where the convergence rate is
-    min(2.2c/day, 0.03 * excess_gap_cents) while the retail-vs-wholesale gap
-    is elevated (the 2026-09-26 lesson: gap closing runs ~2c/day historically).
+    Daily delta distribution = empirical consecutive-print changes (streak blend
+    is not applied here - the horizon is multi-day). The drift is the empirical
+    regression on the excess gap (convergence_drift_c): the gap closes ~3%/day
+    while elevated, and the REMAINING gap decays geometrically across the
+    horizon (each day's decline shrinks the gap that drives the next day).
     Pure; tested.
     """
     import numpy as np
     arr = np.asarray(deltas, dtype=float)
     emp_drift = float(arr.mean())
-    drift = emp_drift
-    if excess_gap_cents is not None and excess_gap_cents > 5:
-        conv = -min(2.2, 0.03 * excess_gap_cents)
-        drift = min(emp_drift, conv)
-    return {"deltas": arr, "drift_c": drift, "emp_drift_c": emp_drift}
+    return {"deltas": arr, "excess_c": excess_gap_cents,
+            "emp_drift_c": emp_drift}
 
 
 def path_mcs(model: dict, days: int, n_sims: int = 20000, seed: int = 3) -> "object":
-    """Simulate cumulative print changes over `days`; returns the array."""
+    """Simulate cumulative print changes over `days`; returns the array.
+
+    Day k's drift uses the gap remaining after k days of convergence
+    (gap_k = gap * 0.97^k), so a 56c gap decays: -1.12c, -1.09c, -1.05c ...
+    Pure; tested.
+    """
     import numpy as np
     rng = np.random.default_rng(seed)
-    samp = model["deltas"][rng.integers(0, len(model["deltas"]), size=(n_sims, days))]
-    drift_adj = model["drift_c"] - model["emp_drift_c"]
-    return np.cumsum(samp + drift_adj, axis=1)
+    samp = model["deltas"][rng.integers(0, len(model["deltas"]), size=(n_sims, days))].astype(float)
+    gap = model.get("excess_c")
+    if gap is not None and gap > CONV_APPLY_MIN_CENT:
+        drifts = np.array([convergence_drift_c(gap * (0.97 ** k)) for k in range(days)])
+        adj = drifts - model["emp_drift_c"]
+        samp = samp + adj[None, :]
+    return np.cumsum(samp, axis=1)
 
 
 def cmd_path(series: str, target_date: str) -> int:
