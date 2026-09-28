@@ -42,6 +42,8 @@ for ST in NV WA OR MA NJ CA AZ CO CT FL GA IL MI MN NC NY OH PA TX VA WI; do
   run scripts/aaa_pricer.py price --series "KXAAAGASD$ST" --target "$TARGET" --retail regular --alert-min 0.15
 done
 run scripts/aaa_pricer.py score
+run scripts/scalp_paper.py record || true
+run scripts/scalp_paper.py settle || true
 run scripts/jev_score.py
 
 echo "[run_morning] $(date) done -> $LOG"
