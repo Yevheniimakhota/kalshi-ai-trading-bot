@@ -26,22 +26,25 @@ XIAOMI −$4.00/−$4.50, ANTHSHARE-2.8 **+$5.60**. Net ≈ −$70.7. Weekend-di
 dilution was real but weaker than last weekend (openai Sunday ~15–16% vs 13.6–14.1% prior);
 never size off a single weekend's dilution.
 
-## 3. Your 99c scalping idea — being tested now
+## 3. Your 99c scalping idea — tested, verdict: not mechanical, see below
 
-Buying near-certain contracts at 0.99 for the last 1%, compounding. The math:
-* Fee at 0.99 ≈ 0.07%/contract → net win ≈ +0.93%. Breakeven win rate ≈ 99.07%.
-* One loss at 0.99 wipes ~460 wins of compounding. Full-stake compounding needs true P(win)
-  ≳ 99.9% to survive indefinitely; Kelly sizing says even a 99.5% edge deserves only ~0.5% of
-  bankroll per flip.
-* The version that can actually work: outcome **already locked by the source** (print published /
-  result confirmed) but the market still trades before settlement. Then true P ≈ 100% and the
-  only risks are settlement surprises (source revision, dispute) and fees.
-* **Fee catch (important)**: Kalshi rounds the fee up per ORDER. One contract at 0.99 pays a
-  1¢ minimum fee → net win exactly $0.00 per contract. Buying at 0.99 one contract at a time
-  is strictly −EV. The strategy needs either (a) larger clips (fee is rounded up on the order
-  total: 100 contracts at 0.99 → $0.07 fee → +0.93% net) or entry ≤ 0.985. Worker replaced by
-  an in-repo study: `scripts/scalp_study.py` (running; report → `docs/SCALP_STUDY.md`). If you have historical fills from when you ran this manually, they'd
-  sharpen the test — drop them anywhere in the repo and I'll fold them in.
+Full report: `docs/SCALP_STUDY.md` (two independent samples, 2,683-market 1-min study).
+
+* **Taker at the 0.99 ask: loses** — 93.8% win, EV −6.3%/trade on 354 fills. You
+  only get filled at 0.99 when the outcome is about to flip (adverse selection).
+  Also, when the bid is ≥0.99 the ask is 1.00 in 239/239 cases — the last cent
+  usually isn't offered at all.
+* **Naive resting maker bid: loses worse** — 77.5% win on 111 fills. Your bid is a
+  free option for informed sellers.
+* **The level is real**: markets whose bid sat ≥0.99 near close settled ~100%
+  (242/242, 155/156, 126/126). Information yes; mechanical trade no.
+* The only testable version: maker close-outs **gated by our own pricer**
+  (fair ≥ 0.995, gas/diesel ladders, ~2.3 fillable/day, small clips, breakeven
+  99.1%, one loss wipes ~460 compounding wins). I will paper-log these going
+  forward before any real size.
+* **Question for you**: when it "worked for you for a while", were those
+  source-locked outcomes you judged manually? If yes, the edge was the judgment —
+  share your fills (dates/tickers/entries) and I'll replicate the gate and test it.
 
 ## 4. Data sources I'd like (highest value first)
 
