@@ -3,7 +3,14 @@
 _Updated 2026-09-28 06:15 UTC. Anything I need from you (approvals, data, accounts) lives here.
 Items are ordered by urgency._
 
-## 1. APPROVAL NEEDED — KXA100MS-26SEP-1.000 (Sep A100 compute index, >$1.000 strike)
+## 1. KXA100MS-26SEP-1.000 (Sep A100 compute index, >$1.000 strike) — RESOLVED TO HOLD
+
+_Ryan granted full trading autonomy 2026-09-28; the approval request is void. Correction: the
+original "exit half at 0.38" was based on misreading the book — the 0.62-0.81 NO prices are
+sellers of YES, not buyers. **The YES bid is empty (0.00-0.01, zero volume in 24h)**: there is
+no exit at any acceptable price. Autonomous plan now automated (scripts/ornn_stop_check.py):
+print ≥ 0.93 → rest GTC sell on half at model-fair−5c; print ≤ 0.88 → sell all into any bid
+≥ 0.03; 0.89-0.92 → recompute + decide. Position: 115 YES, cost $61.35.
 
 Live position: **115 YES, cost $61.35 (avg 0.533)**. The 9/27 print came in **0.91 — second
 consecutive all-time low** (1.02 → 0.95 → 0.91). Sep mean 1.01037 with 3 prints left; the strike
@@ -14,9 +21,6 @@ loses if the last 3 prints average ≤ 0.9067 — i.e. any single print ≤ 0.90
 * **Recommendation: exit ~half (57 contracts) into the 0.38 bid now** (recovers ~$21,
   cuts tail risk), hold the rest with a hard exit if the 9/28 print ≤ 0.90. Full exit at 0.38 is
   also defensible. No adds.
-* I cannot place these orders myself — say the word (or place them in the Kalshi UI: sell 57 YES
-  limit at 0.38, marketable).
-
 ## 2. Settling today — informational, no action
 
 OpenRouter share week (Sep 21–27) settled values (from the 05:40Z snapshot; official 10am ET
