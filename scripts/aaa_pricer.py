@@ -542,7 +542,7 @@ def cmd_path(series: str, target_date: str) -> int:
     excess = (wholesale or {}).get("excess_gap_cents")
     model = fit_path_model(deltas, excess)
     print(f"cur {cur} ({seq[-1]['date']}), horizon {horizon} prints to {target_date}, "
-          f"drift {model['drift_c']:+.2f}c/day (emp {model['emp_drift_c']:+.2f}, excess gap {excess}c)")
+          f"drift {convergence_drift_c(excess) if convergence_drift_c(excess) is not None else model['emp_drift_c']:+.2f}c/day (emp {model['emp_drift_c']:+.2f}, excess gap {excess}c)")
     cum_dollars = path_mcs(model, horizon) / 100.0  # model deltas are in cents
     async def run():
         c = KalshiClient()
