@@ -40,15 +40,28 @@ def log(action: str, text: str) -> None:
 
 
 def strike_math(prices: list[float]) -> dict:
-    """Sep mean-so-far and the remaining-prints requirement for the >1.000 strike."""
-    sep = [p for p in prices]
+    """Sep mean-so-far and the remaining-prints requirement for the >1.000 strike.
+
+    Counts prints IN SEPTEMBER (month days 1..30), not a trailing window — the
+    remaining-prints count must be 30 minus the September prints done, else the
+    requirement drifts as the window slides (bug found 2026-09-28: window said 3
+    remaining when only 2 prints were left).
+    """
+    d = json.load(open(REPO / "data" / "ornn" / "a100-sxm4.json"))["data"]
+    seen = set()
+    sep = []
+    for x in d:
+        day = x["timestamp"][:10]
+        if day.startswith("2026-09") and day not in seen:
+            seen.add(day)
+            sep.append(x["index_value"])
     n = 30
-    msf = sum(sep[-27:]) / 27 if len(sep) >= 27 else sum(sep) / len(sep)
-    remaining = n - len(sep[-27:])
-    # need (30 - 27*msf) total over remaining prints for the mean to stay > 1.000
-    need = 30.0 - 27 * msf
-    return {"mean27": msf, "remaining": remaining, "need_sum": need,
-            "need_avg": need / remaining if remaining else None}
+    msf = sum(sep) / len(sep)
+    remaining = n - len(sep)
+    # need (30 - len(sep)*msf) total over remaining prints for mean > 1.000
+    need = 30.0 - len(sep) * msf
+    return {"sep_n": len(sep), "mean_ms": msf, "remaining": remaining,
+            "need_sum": need, "need_avg": need / remaining if remaining else None}
 
 
 async def main() -> None:
@@ -68,7 +81,7 @@ async def main() -> None:
             series.append(x["index_value"])
     last = series[-1]
     m = strike_math(series)
-    print(f"print {last}; mean27 {m['mean27']:.5f}; remaining {m['remaining']} "
+    print(f"print {last}; sep mean {m['mean_ms']:.5f} ({m['sep_n']} prints); remaining {m['remaining']} "
           f"need avg {m['need_avg']:.4f}")
 
     ob = await c.get_orderbook(T, depth=20)
