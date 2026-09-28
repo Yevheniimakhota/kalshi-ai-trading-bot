@@ -36,8 +36,11 @@ Buying near-certain contracts at 0.99 for the last 1%, compounding. The math:
 * The version that can actually work: outcome **already locked by the source** (print published /
   result confirmed) but the market still trades before settlement. Then true P ≈ 100% and the
   only risks are settlement surprises (source revision, dispute) and fees.
-* A worker is now measuring P(settle YES | traded ≥ 0.99) on recently settled markets (report →
-  `docs/SCALP_STUDY.md`). If you have historical fills from when you ran this manually, they'd
+* **Fee catch (important)**: Kalshi rounds the fee up per ORDER. One contract at 0.99 pays a
+  1¢ minimum fee → net win exactly $0.00 per contract. Buying at 0.99 one contract at a time
+  is strictly −EV. The strategy needs either (a) larger clips (fee is rounded up on the order
+  total: 100 contracts at 0.99 → $0.07 fee → +0.93% net) or entry ≤ 0.985. Worker replaced by
+  an in-repo study: `scripts/scalp_study.py` (running; report → `docs/SCALP_STUDY.md`). If you have historical fills from when you ran this manually, they'd
   sharpen the test — drop them anywhere in the repo and I'll fold them in.
 
 ## 4. Data sources I'd like (highest value first)
