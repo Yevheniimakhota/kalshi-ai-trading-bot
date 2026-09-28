@@ -1,8 +1,20 @@
 # Human review queue — for Ryan
 
-_Updated 2026-09-28 06:15 UTC. Anything I need from you (approvals, data, accounts) lives here.
-Items are ordered by urgency._
+_Updated 2026-09-28 ~19:00 UTC. Ryan granted full trading autonomy and confirmed the risk
+constitution (see src/config/settings.py). New goal set: autonomous, risk-controlled profit
+system; success = positive realized P&L on rolling 30-day windows inside the limits._
 
+## Confirmed operating parameters (2026-09-28)
+
+* **Bankroll: ~$925** (cash $315.60 + marks $609.84). Up from ~$900 baseline two days ago.
+* **Limits (in settings.py, Ryan-approved):** 5% max daily loss, 20% peak-to-trough drawdown,
+  10% max single position, 15% correlated-family cap. New models earn size only via forward
+  performance (start 5 contracts, n>=50 beating the book to double).
+* **No purchases**: no pro API (doesn't exist), no paid data for now. Polymarket creds exist on
+  the machine but IP-ban risk -> cross-platform scanner is deprioritized.
+* **FIRST TASK for the next session**: `src/risk/risk_governor.py` is a pure module — wire it
+  into the order path so evaluate_risk() actually gates place_order (halt flag
+  data/runtime/TRADING_HALTED pauses buys). Until then the limits live in settings only.
 ## 1. KXA100MS-26SEP-1.000 (Sep A100 compute index, >$1.000 strike) — RESOLVED TO HOLD
 
 _Ryan granted full trading autonomy 2026-09-28; the approval request is void. Correction: the
