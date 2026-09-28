@@ -163,6 +163,65 @@ def latest_snapshot() -> dict | None:
     return json.loads(files[-1].read_text())["parsed"]
 
 
+AUTHORS_DIR = REPO / "data" / "orshare" / "authors"
+
+
+def author_shares(view: str = "day") -> dict:
+    """Per-author ALL-request shares + totals from the public rankings API.
+
+    `view=day` = the most recent complete UTC day; `view=week` = weekly totals
+    per model (rows are keyed to the last date of the window). The resolution
+    chart is TEXT-filtered; these ALL-request shares are the raw signal - the
+    per-author text/all ratio is fit over time as daily captures accumulate
+    (started 2026-09-28). Two weeks of daily captures enable the weekend
+    dilution model for the KX*SHARE strikes.
+    """
+    import httpx
+    from collections import defaultdict
+    r = httpx.get(
+        f"https://openrouter.ai/api/frontend/v1/rankings/models?view={view}",
+        timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    rows = r.json()["data"]
+    day = rows[0]["date"][:10]
+    by_author_req = defaultdict(int)
+    by_author_tok = defaultdict(int)
+    for x in rows:
+        a = x["model_permaslug"].split("/")[0]
+        by_author_req[a] += x["count"] or 0
+        by_author_tok[a] += (x.get("total_prompt_tokens") or 0) + \
+            (x.get("total_completion_tokens") or 0)
+    tot_req = sum(by_author_req.values())
+    tot_tok = sum(by_author_tok.values())
+    return {
+        "fetched": dt.datetime.now(dt.UTC).isoformat(),
+        "view": view,
+        "label_date": day,
+        "total_requests": tot_req,
+        "total_tokens": tot_tok,
+        "shares_by_author_req": {a: round(v / tot_req * 100, 3)
+                                 for a, v in by_author_req.items() if v > 0},
+        "tokens_by_author": dict(sorted(by_author_tok.items(), key=lambda kv: -kv[1])),
+    }
+
+
+def capture_authors() -> int:
+    """Idempotent daily capture of day+week author shares -> data/orshare/authors/."""
+    AUTHORS_DIR.mkdir(parents=True, exist_ok=True)
+    n = 0
+    for view in ("day", "week"):
+        d = author_shares(view)
+        path = AUTHORS_DIR / f"{d['label_date']}_{view}.json"
+        is_new = not path.exists()
+        if is_new:
+            path.write_text(json.dumps(d, indent=1))
+            n += 1
+        print(f"{view}: label {d['label_date']} req {d['total_requests']/1e6:.0f}M "
+              f"tok {d['total_tokens']/1e12:.2f}T -> {path.name}"
+              f"{' (new)' if is_new else ' (exists)'}")
+    return n
+
+
 def strike_note(current_pct: float | None, strike: float, shown: bool) -> str:
     """Resolution logic per the rules: rounded 1dp must be > strike; not shown => NO."""
     if not shown:
@@ -178,6 +237,7 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("snapshot")
     sub.add_parser("day")
+    sub.add_parser("authors")
     p = sub.add_parser("read")
     p.add_argument("file")
     p2 = sub.add_parser("week")
@@ -189,6 +249,8 @@ def main() -> None:
         snapshot()
     elif args.cmd == "day":
         print(json.dumps(day_shares(), indent=1))
+    elif args.cmd == "authors":
+        capture_authors()
     elif args.cmd == "read":
         print(json.dumps(parse_raw(_unescape_cli_output(Path(args.file).read_text())), indent=1))
     else:
