@@ -70,8 +70,8 @@ class SentimentConfig:
 class TradingConfig:
     """Trading strategy configuration."""
     # Position sizing and risk management — DISCIPLINED DEFAULTS
-    max_position_size_pct: float = 3.0  # SANE: 3% per position (was 5% "beast mode")
-    max_daily_loss_pct: float = 10.0    # SANE: 10% daily loss limit (was 15%)
+    max_position_size_pct: float = 10.0  # Ryan-approved 2026-09-28: 10% per position
+    max_daily_loss_pct: float = 5.0     # Ryan-approved 2026-09-28: 5% daily loss limit
     max_positions: int = 10              # SANE: 10 concurrent positions (was 15)
     min_balance: float = 100.0          # SANE: $100 minimum balance (was $50)
     
@@ -189,7 +189,8 @@ max_opportunities_per_batch: int = 50   # Limit opportunities to prevent optimiz
 # Conservative defaults based on live trading experience. Beast mode available via CLI flag.
 max_volatility: float = 0.40            # SANE: 40% volatility max (was 80%)
 max_correlation: float = 0.70           # SANE: 70% correlation max (was 95%)
-max_drawdown: float = 0.15              # SANE: 15% drawdown limit (was 50% — suicidal)
+max_drawdown: float = 0.20              # Ryan-approved 2026-09-28: 20% peak-to-trough limit
+max_family_exposure: float = 0.15       # Ryan-approved 2026-09-28: 15% correlated-family cap
 max_sector_exposure: float = 0.30       # SANE: 30% sector concentration (was 90%)
 
 # === PERFORMANCE TARGETS ===
