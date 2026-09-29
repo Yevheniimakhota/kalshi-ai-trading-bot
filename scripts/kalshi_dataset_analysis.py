@@ -74,24 +74,24 @@ def process_file(f):
     for tk, cnt, yp, side, ts in zip(df["ticker"], df["count"], df["yes_price"],
                                      df["taker_side"], df["created_time"]):
         res = result_by_ticker.get(tk)
+        if tk.startswith(FUEL_PREFIX) and len(fuel_trades[tk]) < 20000:
+            try:
+                fuel_trades[tk].append((ts.to_pydatetime(), yp, cnt, side))
+            except Exception:
+                pass
         if res is None:
-            # fuel tickers may be unsettled but still interesting for dynamics
-            if tk.startswith(FUEL_PREFIX) and len(fuel_trades[tk]) < 20000:
-                try:
-                    fuel_trades[tk].append((ts.to_pydatetime(), yp, cnt, side))
-                except Exception:
-                    pass
             continue
         p = yp / 100.0
         win = res
         taker_win = win if side == "yes" else 1 - win
         cnt = int(cnt)
+        cost = p if side == "yes" else 1.0 - p   # what the taker risked per contract
         b = bucket_of(p)
         if b:
             a = agg[(b, side)]
             a[0] += cnt
             a[1] += cnt * taker_win
-            a[2] += cnt * p
+            a[2] += cnt * cost
         ct = close_by_ticker.get(tk)
         if ct is not None:
             try:
