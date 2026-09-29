@@ -250,6 +250,10 @@ class KalshiClient(TradingLoggerMixin):
                 )
                 
                 response.raise_for_status()
+                if not response.content.strip():
+                    # 201/200 with empty body (e.g. api_usage_level upgrade):
+                    # treat as success rather than a JSON parse error
+                    return {"status_code": response.status_code, "empty_body": True}
                 return response.json()
                 
             except httpx.HTTPStatusError as e:
