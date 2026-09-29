@@ -1,5 +1,15 @@
 
 import subprocess, time, sys, datetime
+def baseline():
+    """Last print already in the CSV - the poller fires only on a NEW value."""
+    import csv
+    try:
+        with open('data/aaa/aaa_daily.csv') as f:
+            last = list(csv.DictReader(f))[-1]
+        return float(last['diesel'])
+    except Exception:
+        return None
+
 def page_die():
     try:
         import httpx
@@ -19,7 +29,8 @@ for attempt in range(10):
     die, reg = page_die()
     ts = datetime.datetime.now(datetime.timezone.utc).strftime('%H:%M:%S')
     print(ts, 'poll:', die, reg, flush=True)
-    if die is not None and abs(die - 6.4531) > 1e-9:
+    base = baseline()
+    if die is not None and (base is None or abs(die - base) > 1e-9):
         print('NEW PRINT DETECTED - running morning cycle', flush=True)
         subprocess.run(['bash', 'scripts/run_morning.sh'])
         subprocess.run(['git', 'add', '-A', 'data/', 'logs/'])
