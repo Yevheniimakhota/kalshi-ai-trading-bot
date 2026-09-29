@@ -432,6 +432,46 @@ class KalshiClient(TradingLoggerMixin):
             ticker, client_order_id, side, action, count, type_,
             yes_price, no_price, expiration_ts,
         )
+        # --- risk constitution gate (Ryan-approved 2026-09-28) ----------------
+        # Every order passes the risk governor: daily-loss / drawdown halts and
+        # the single-position cap. Fail-open on governor *infrastructure*
+        # errors (loud warning) — a limit breach itself always blocks.
+        gate_error: Optional[str] = None
+        try:
+            import asyncio as _asyncio
+            from src.risk.risk_governor import RiskGovernor
+            drawdown_pct = 20.0
+            try:
+                from src.config import settings as _s
+                drawdown_pct = getattr(_s, "max_drawdown", 0.20) * 100.0
+            except Exception:
+                pass
+            gov = RiskGovernor(kalshi_client=self,
+                               max_daily_loss_pct=settings.trading.max_daily_loss_pct,
+                               max_drawdown_pct=drawdown_pct)
+            decision = await gov.check()
+            if decision.halted:
+                gate_error = f"RISK_HALT: {'; '.join(decision.reasons)}"
+            else:
+                yes_leg_cents = (yes_price if side.lower() == "yes"
+                                 else 100 - (no_price or 0)) if (yes_price or no_price) else None
+                if yes_leg_cents is not None and action.lower() == "buy":
+                    cost = yes_leg_cents / 100.0 * float(count)
+                    equity = decision.current_equity_cents / 100.0
+                    cap = equity * settings.trading.max_position_size_pct / 100.0
+                    if cost > cap:
+                        gate_error = (f"POSITION_CAP: order cost ${cost:.2f} exceeds "
+                                      f"{settings.trading.max_position_size_pct:.0f}% of "
+                                      f"equity ${equity:.2f}")
+        except Exception as gate_exc:  # governor infra failure: log, proceed
+            try:
+                self.logger.warning("risk governor unavailable, failing open: %s", gate_exc)
+            except Exception:
+                pass
+        if gate_error:
+            raise KalshiAPIError(gate_error)
+        # ----------------------------------------------------------------------
+
         resp = await self._make_authenticated_request(
             "POST", "/trade-api/v2/portfolio/events/orders", json_data=payload
         )
