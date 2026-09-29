@@ -34,6 +34,7 @@ run scripts/ornn_data.py fetch
 run scripts/ornn_data.py ladder
 run scripts/orshare_data.py snapshot
 run scripts/orshare_data.py authors
+run scripts/weather_data.py capture
 run scripts/aaa_pricer.py path --series KXDIESELMON --target "$TARGET_MONTH"
 run scripts/aaa_pricer.py path --series KXDIESELW --target "$TARGET_WEEK"
 run scripts/aaa_pricer.py price --series KXDIESELD --target "$TARGET" --alert-min 0.10
