@@ -70,3 +70,16 @@ appends per-strike Brier (model vs book mid) to `data/aaa/scores.jsonl`. Over
 time the summary answers the only question that matters: **does the model beat
 the book out-of-sample?** Until the answer is yes with enough n, this family
 gets no size.
+
+## State transfer calibration (2026-09-29, all 21 states, full backfills)
+
+`data/aaa/states/CALIBRATION.json`. Per-state fits of
+`state_delta = alpha + beta*nat_delta + resid` on 236-364 matched print pairs:
+
+* beta range 0.80-0.98 (OH highest 0.98, TX/GA lowest 0.81)
+* correlation 0.86-0.93, residual std 0.60-0.86c — versus the ~2.4c effective
+  error of the old national-delta-applied-to-state-anchor model
+* no problem states; every state n>=236
+
+The pricer fits these at runtime (fit_state_transfer); this file is the audited
+snapshot. Forward scores begin with the 2026-09-29 print cycle.
