@@ -314,7 +314,7 @@ def cmd_price(args) -> None:
         import aaa_futures
         sym = "HO=F" if retail_col == "diesel" else "RB=F"
         wholesale = aaa_futures.convergence(rows, sym, retail_col)
-        drift = convergence_drift_c((wholesale or {}).get("excess_gap_cents"))
+        drift = convergence_drift_c((wholesale or {}).get("excess_gap_cents"), retail_col)
         if drift is not None:
             print(f"gap-aware drift: {drift:+.2f}c/day (excess "
                   f"{wholesale['excess_gap_cents']}c)")
@@ -435,27 +435,28 @@ async def settled_print_bracket(series: str, target: str) -> dict | None:
         await c.close()
 
 
-# Empirical convergence regression (fit 2026-09-28 on n=343 matched
-# print/futures days, 2025-03..2026-09): next retail delta (cents) vs the
-# excess retail-minus-wholesale gap (cents), r = -0.34:
-#   delta_next = 0.574 - 0.0298 * excess_gap_cents
-# i.e. the gap closes ~3%/day in expectation. Replaces the older
-# min(2.2c, 0.03*excess) rule, which overpriced convergence speed vs both the
-# regression and two days of live book evidence (the book priced -1.1 to
-# -1.3c/day while the rule said -1.7c).
-CONV_INTERCEPT_C = 0.574
-CONV_SLOPE_PER_CENT = 0.0298
+# Empirical convergence regressions (fit 2026-09-28/29, matched print/futures
+# days 2025-03..2026-09): next retail delta (cents) vs the excess
+# retail-minus-wholesale gap (cents). Diesel: n=343 r=-0.34; gas: n=346 r=-0.36.
+# The gap closes ~3%/day (diesel) / ~4%/day (gas) in expectation. Replaces the
+# older min(2.2c, 0.03*excess) rule.
+CONV_COEFFS = {
+    "diesel": {"intercept": 0.574, "slope": 0.0298},
+    "regular": {"intercept": 0.280, "slope": 0.0440},
+}
 CONV_APPLY_MIN_CENT = 5.0
+CONV_DEFAULT_FUEL = "regular"
 
 
-def convergence_drift_c(excess_gap_cents: float | None) -> float | None:
+def convergence_drift_c(excess_gap_cents: float | None, fuel: str = "regular") -> float | None:
     """Expected next-day retail drift (cents) from the excess wholesale gap.
 
     Pure; tested. Returns None when the gap is not elevated enough to trust.
     """
     if excess_gap_cents is None or excess_gap_cents <= CONV_APPLY_MIN_CENT:
         return None
-    return CONV_INTERCEPT_C - CONV_SLOPE_PER_CENT * excess_gap_cents
+    c = CONV_COEFFS.get(fuel, CONV_COEFFS[CONV_DEFAULT_FUEL])
+    return c["intercept"] - c["slope"] * excess_gap_cents
 
 
 def sample_blend(model: dict, n: int, rng) -> "object":
@@ -477,7 +478,7 @@ def sample_blend(model: dict, n: int, rng) -> "object":
 
 
 def fit_path_model(deltas: list[float], excess_gap_cents: float | None,
-                   current_streak: int = 0) -> dict:
+                   current_streak: int = 0, fuel: str = "regular") -> dict:
     """Multi-day path model for weekly/monthly print ladders.
 
     Daily delta distribution = empirical consecutive-print changes (streak blend
@@ -490,7 +491,7 @@ def fit_path_model(deltas: list[float], excess_gap_cents: float | None,
     import numpy as np
     arr = np.asarray(deltas, dtype=float)
     emp_drift = float(arr.mean())
-    return {"deltas": arr, "excess_c": excess_gap_cents,
+    return {"deltas": arr, "excess_c": excess_gap_cents, "fuel": fuel,
             "emp_drift_c": emp_drift}
 
 
@@ -505,8 +506,9 @@ def path_mcs(model: dict, days: int, n_sims: int = 20000, seed: int = 3) -> "obj
     rng = np.random.default_rng(seed)
     samp = model["deltas"][rng.integers(0, len(model["deltas"]), size=(n_sims, days))].astype(float)
     gap = model.get("excess_c")
+    fuel = model.get("fuel", "regular")
     if gap is not None and gap > CONV_APPLY_MIN_CENT:
-        drifts = np.array([convergence_drift_c(gap * (0.97 ** k)) for k in range(days)])
+        drifts = np.array([convergence_drift_c(gap * (0.97 ** k), fuel) for k in range(days)])
         adj = drifts - model["emp_drift_c"]
         samp = samp + adj[None, :]
     return np.cumsum(samp, axis=1)
@@ -540,9 +542,9 @@ def cmd_path(series: str, target_date: str) -> int:
     sym = "HO=F"
     wholesale = aaa_futures.convergence(rows, sym, retail_col)
     excess = (wholesale or {}).get("excess_gap_cents")
-    model = fit_path_model(deltas, excess)
+    model = fit_path_model(deltas, excess, fuel=retail_col)
     print(f"cur {cur} ({seq[-1]['date']}), horizon {horizon} prints to {target_date}, "
-          f"drift {convergence_drift_c(excess) if convergence_drift_c(excess) is not None else model['emp_drift_c']:+.2f}c/day (emp {model['emp_drift_c']:+.2f}, excess gap {excess}c)")
+          f"drift {convergence_drift_c(excess, retail_col) if convergence_drift_c(excess, retail_col) is not None else model['emp_drift_c']:+.2f}c/day (emp {model['emp_drift_c']:+.2f}, excess gap {excess}c)")
     cum_dollars = path_mcs(model, horizon) / 100.0  # model deltas are in cents
     async def run():
         c = KalshiClient()

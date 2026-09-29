@@ -8,7 +8,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 
 from aaa_pricer import (convergence_drift_c, fit_path_model, path_mcs,  # noqa: E402
                         sample_blend, transfer_fair_yes, fit_model,
-                        CONV_INTERCEPT_C, CONV_SLOPE_PER_CENT)
+                        CONV_COEFFS)
+
+CONV_INTERCEPT_C = CONV_COEFFS["diesel"]["intercept"]
+CONV_SLOPE_PER_CENT = CONV_COEFFS["diesel"]["slope"]
 
 DELTAS = [0.5, -0.6, -0.7, 0.3, -0.5, -0.6, 0.2, -1.0, -0.5, 0.4] * 5
 
@@ -17,22 +20,25 @@ def test_convergence_drift_regression():
     # documented regression: delta_next = 0.574 - 0.0298 * excess
     assert convergence_drift_c(None) is None
     assert convergence_drift_c(3.0) is None          # below apply threshold
-    d = convergence_drift_c(46.7)
+    d = convergence_drift_c(46.7, "diesel")
     assert abs(d - (CONV_INTERCEPT_C - CONV_SLOPE_PER_CENT * 46.7)) < 1e-9
+    # gas has its own steeper slope
+    dg = convergence_drift_c(46.7, "regular")
+    assert dg < d  # gas closes the gap faster
     # more excess gap -> more negative drift
     assert convergence_drift_c(80.0) < convergence_drift_c(40.0) < 0
     # sanity at the 2026-09-28 live value (~57c): about -1.1c/day
-    assert -1.4 < convergence_drift_c(56.6) < -0.9
+    assert -1.4 < convergence_drift_c(56.6, "diesel") < -0.9
 
 
 def test_path_mc_gap_aware_and_deterministic():
-    m = fit_path_model(DELTAS, excess_gap_cents=46.7)
+    m = fit_path_model(DELTAS, excess_gap_cents=46.7, fuel="diesel")
     a = path_mcs(m, 4, seed=3)
     b = path_mcs(m, 4, seed=3)
     assert np.array_equal(a, b)
     emp = m["emp_drift_c"]
     # day-1 mean shifts by (drift(gap) - emp)
-    d1 = convergence_drift_c(46.7)
+    d1 = convergence_drift_c(46.7, "diesel")
     assert abs(a[:, 0].mean() - d1) < 0.5
     # later days converge slightly slower (decaying gap) -> day-4 daily mean
     # is LESS negative than day-1
@@ -41,7 +47,7 @@ def test_path_mc_gap_aware_and_deterministic():
 
 
 def test_path_mc_small_gap_is_pure_empirical():
-    m = fit_path_model(DELTAS, excess_gap_cents=3.0)
+    m = fit_path_model(DELTAS, excess_gap_cents=3.0, fuel="diesel")
     a = path_mcs(m, 4, seed=3)
     assert abs(a[:, -1].mean() - 4 * m["emp_drift_c"]) < 0.5
 
