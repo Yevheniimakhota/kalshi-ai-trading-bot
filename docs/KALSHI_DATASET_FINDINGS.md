@@ -46,9 +46,34 @@ Even in the last hour, taking YES at 98-99c is slightly -EV. The counterparty
    edges there must be measured, not assumed; the emotional categories carry
    flow edge but we lack a model, so we stay out of sports/media as takers.
 
+## 5. Corrected cost-basis table (v2 rerun) — the honest map of taker EV
+
+EV per unit of capital risked, by price bucket and taker side (n = contracts):
+
+| bucket (yes price) | taker YES | taker NO |
+|---|---|---|
+| 1-5c | **−50.8%** | +0.3% |
+| 5-10c | **−36.4%** | +0.7% |
+| 10-20c | **−17.0%** | +1.0% |
+| 20-35c | +0.9% | −1.0% |
+| 35-65c | −2.1% | −2.1% |
+| 65-80c | −1.5% | −3.5% |
+| 80-90c | −0.1% | **−17.4%** |
+| 90-95c | +1.0% | **−26.6%** |
+| 95-97c | +0.3% | **−33.5%** |
+| 97-99c | +0.1% | **−39.6%** |
+| 99-100c | −0.4% | **+13.5%** |
+
+Read this as the exchange's wealth-transfer map: **takers lose catastrophically
+buying ANY cheap contract** — YES longshots (−17% to −51%) AND NO-at-80-99c
+(betting against near-certainties, −17% to −40%). The only consistently positive
+taker cells are buying expensive near-certainties (YES ≥90c: +0.1-1.0%, NO at
+99c+: +13.5%) — and those fills are only available when someone is dumping
+(= our measured adverse selection). Practical rule, now enforced: never buy
+anything priced ≤20c as a taker; near-certainties only as a gated maker.
+
 ## Notes
 
-* NO-side EV columns in the JSON have a known label bug (risked uses yes_price for
-  both sides); YES-side numbers are correct. Fix queued.
-* Fuel-ladder crossing pass returned n=0 (filter bug: settled fuel tickers were
-  skipped); rerun queued — non-blocking.
+* Fuel-ladder crossing: 83 ladders, all crossed 0.95 with ≥1h to close (median
+  lead large because weekly/monthly ladders price near-extreme strikes at
+  issuance; not a clean per-day statistic).
