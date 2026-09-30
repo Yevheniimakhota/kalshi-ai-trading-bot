@@ -51,9 +51,13 @@ def record() -> int:
             if r["ticker"] in done:
                 continue
             fair, ask = r.get("fair_yes"), r.get("yes_ask")
-            if fair is None or ask is None:
+            bid = r.get("yes_bid")
+            if fair is None or ask is None or bid is None:
                 continue
-            if fair >= 0.995 and 0 < ask <= 0.99:
+            # 9/30 lesson (n=110 paper): wide-book / deep-discount rows were
+            # snap-blind phantom gaps (28% win rate); tight close-outs went 18/18.
+            spread = ask - bid
+            if fair >= 0.995 and 0.90 <= ask <= 0.99 and spread <= 0.25:
                 e = {"ts": now, "ticker": r["ticker"], "series": series,
                      "target": snap["target_date"], "entry": ask, "fair": fair,
                      "qty": 100, "status": "open"}
