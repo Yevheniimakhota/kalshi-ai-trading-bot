@@ -256,6 +256,7 @@ def cmd_price(args) -> None:
     state = None
     if args.series.upper().startswith("KXAAAGASD") and len(args.series) > len("KXAAAGASD"):
         state = args.series[len("KXAAAGASD"):len("KXAAAGASD") + 2].upper()
+    import numpy as np  # needed by the transfer model note before pricing
     transfer = None
     if state:
         state_rows = aaa_data.load_state(state)
@@ -307,7 +308,6 @@ def cmd_price(args) -> None:
     # wholesale convergence BEFORE pricing (the daily forecast is gap-aware:
     # two days of live scoring showed the streak-only model underpricing the
     # decline while the excess gap was elevated)
-    import numpy as np
     wholesale = None
     drift = None
     try:

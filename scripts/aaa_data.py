@@ -320,7 +320,7 @@ def fetch_state(state: str, base_url: str = "https://gasprices.aaa.com/?state={s
     path.parent.mkdir(parents=True, exist_ok=True)
     rows = load_csv_from(path)
     prior = rows.get(max(rows) if rows else "", None)
-    if prior and prior.get("date") != day and _same_pair(_row(day, p, ""), prior):
+    if prior and prior.get("date") != day and _same_pair(_row(day, p, "", ""), prior):
         print(f"{state}: stale pair for {day}; NOT merging", file=sys.stderr)
         return None
     rows[day] = _row(day, p, "live", now.strftime("%Y%m%d%H%M%S"))
