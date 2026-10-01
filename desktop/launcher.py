@@ -1,12 +1,22 @@
-from paths import get_user_data_dir
+import sys
+
+from PySide6.QtWidgets import QApplication
+
+from desktop.main_window import MainWindow
 
 
 def main():
-    data_dir = get_user_data_dir()
+    app = QApplication(sys.argv)
 
-    print("Kalshi Desktop Launcher")
-    print(f"Data directory: {data_dir}")
+    app.setApplicationName(
+        "Kalshi Trading Bot"
+    )
+
+    window = MainWindow()
+    window.show()
+
+    return app.exec()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
