@@ -71,8 +71,11 @@ def candidates() -> list:
             continue
         if s.get("rows") and s["target_date"]:
             snaps[s["series"]] = s
+    today = datetime.now(timezone.utc).date().isoformat()
     out = []
     for series, s in snaps.items():
+        if s["target_date"] < today:
+            continue  # market already settled/removed - 404 source
         for r in s["rows"]:
             fair, ask, bid = r.get("fair_yes"), r.get("yes_ask"), r.get("yes_bid")
             if None in (fair, ask, bid):
