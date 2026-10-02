@@ -84,7 +84,14 @@ def _outcome_for_record(record: Dict[str, Any], settlement: Dict[str, Any]) -> O
     if result is None or side is None:
         return None
     won = side == result
-    return {"won": won, "pnl": _pnl_from_my_side(record, settlement, won)}
+    return {
+        "won": won,
+        "pnl": _pnl_from_my_side(record, settlement, won),
+        # Authoritative resolution timing — lets forward_only classify this
+        # trade as forward-settled (edge) instead of "unknown". Add-only
+        # metadata: never touches won/pnl.
+        "settled_time": settlement.get("settled_time"),
+    }
 
 
 def _pnl_from_my_side(record: Dict[str, Any], settlement: Dict[str, Any], won: bool) -> float:
@@ -129,6 +136,20 @@ def reconcile_outcomes(
     newly = 0
     for rec in journal_records:
         if rec.get("outcome"):
+            # Idempotent skip — except for one add-only enrichment: older
+            # outcomes were persisted before settled_time existed. Attach the
+            # authoritative resolution timing (missing field only) so
+            # forward_only can classify legacy trades. won/pnl are immutable
+            # and are never rewritten here.
+            outcome = rec["outcome"]
+            if not outcome.get("settled_time"):
+                settlement = index.get(rec.get("ticker"))
+                st = settlement.get("settled_time") if settlement else None
+                if st:
+                    enriched = dict(rec)
+                    enriched["outcome"] = dict(outcome, settled_time=st)
+                    out.append(enriched)
+                    continue
             out.append(rec)  # already reconciled — idempotent skip
             continue
         if rec.get("voided"):

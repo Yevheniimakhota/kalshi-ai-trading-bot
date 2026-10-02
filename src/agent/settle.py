@@ -103,6 +103,7 @@ def settlement_to_record(settlement: Dict[str, Any]) -> Optional[Dict[str, Any]]
             # decoupled from any future change to settlement_pnl's semantics.
             "won": side == result,
             "pnl": round(float(settlement.get("pnl") or 0.0), 4),
+            "settled_time": settlement.get("settled_time"),
         },
     }
 

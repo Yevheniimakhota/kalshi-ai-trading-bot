@@ -62,7 +62,8 @@ def test_settlement_to_record_carries_side_category_and_outcome():
     rec = settlement_to_record(s)
     assert rec["side"] == "yes"
     assert rec["category"] == "KXCPI"
-    assert rec["outcome"] == {"won": False, "pnl": -3.0}
+    assert rec["outcome"] == {"won": False, "pnl": -3.0,
+                              "settled_time": "2026-06-20T00:00:00Z"}
     assert rec["est_prob"] is None            # settlements carry no prediction
     assert rec["source"] == "settlement"      # provenance, NOT a blockable method
     assert "method" not in rec                # must not masquerade as a research method
