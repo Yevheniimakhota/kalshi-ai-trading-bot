@@ -125,6 +125,24 @@ async def main(dry: bool, max_markets: int) -> None:
         return
     Path(STATE).parent.mkdir(parents=True, exist_ok=True)
     for m in cands:
+        # Stale-scan guard: the scan can be minutes old by the time we reach a
+        # candidate. Re-fetch the market and skip if it closed, delisted, or its
+        # lead dropped below 1h while we worked down the list (16x HTTP 404 on
+        # 2026-10-01: the pilot ordered SEP30 state strikes that had already
+        # closed between scan and place).
+        try:
+            fresh = await c.get_market(m["ticker"])
+            ct_s = (fresh.get("close_time") or "")
+            ct = datetime.fromisoformat(ct_s.replace("Z", "+00:00")) if ct_s else None
+            lead_h_now = (ct - datetime.now(timezone.utc)).total_seconds() / 3600 if ct else None
+            if (fresh.get("status") not in (None, "active", "open")) or (
+                    lead_h_now is not None and lead_h_now < 1.0):
+                print(f"  skip {m['ticker']}: no longer tradable "
+                      f"(status {fresh.get('status')}, lead {lead_h_now}h)")
+                continue
+        except Exception as ex:
+            print(f"  skip {m['ticker']}: recheck failed {str(ex)[:80]}")
+            continue
         coid = f"mkr-{uuid.uuid4().hex[:10]}"
         try:
             r = await c.place_order(m["ticker"], coid, side="yes", action="buy",
