@@ -26,7 +26,12 @@ from dotenv import load_dotenv
 load_dotenv(REPO / ".env")
 from src.clients.kalshi_client import KalshiClient
 
-T = "KXA100MS-26SEP-1.000"
+import calendar
+_NOW = datetime.now(timezone.utc)
+_MON_ABBR = calendar.month_abbr[_NOW.month].upper()          # e.g. "OCT"
+_MON_DAYS = calendar.monthrange(_NOW.year, _NOW.month)[1]
+_MON_STR = f"{_NOW:%y%m}"[:2] + _MON_ABBR                    # e.g. "26OCT"
+T = f"KXA100MS-26{_MON_ABBR}-1.000"                          # active month's mean>1.000 strike
 JOURNAL = REPO / "data" / "runtime" / "decision_journal.jsonl"
 GPU = "A100 SXM4"
 
@@ -50,18 +55,20 @@ def strike_math(prices: list[float]) -> dict:
     d = json.load(open(REPO / "data" / "ornn" / "a100-sxm4.json"))["data"]
     seen = set()
     sep = []
+    mon_prefix = f"{_NOW:%Y-%m}"                                # e.g. "2026-10"
     for x in d:
         day = x["timestamp"][:10]
-        if day.startswith("2026-09") and day not in seen:
+        if day.startswith(mon_prefix) and day not in seen:
             seen.add(day)
             sep.append(x["index_value"])
-    n = 30
-    msf = sum(sep) / len(sep)
+    n = _MON_DAYS
+    msf = sum(sep) / len(sep) if sep else 0.0
     remaining = n - len(sep)
-    # need (30 - len(sep)*msf) total over remaining prints for mean > 1.000
-    need = 30.0 - len(sep) * msf
+    # need (n - len(sep)*msf) total over remaining prints for mean > 1.000
+    need = float(n) - len(sep) * msf
     return {"sep_n": len(sep), "mean_ms": msf, "remaining": remaining,
-            "need_sum": need, "need_avg": need / remaining if remaining else None}
+            "need_sum": need, "need_avg": need / remaining if remaining else None,
+            "resolved": remaining <= 0}
 
 
 async def main() -> None:
@@ -81,8 +88,14 @@ async def main() -> None:
             series.append(x["index_value"])
     last = series[-1]
     m = strike_math(series)
-    print(f"print {last}; sep mean {m['mean_ms']:.5f} ({m['sep_n']} prints); remaining {m['remaining']} "
-          f"need avg {m['need_avg']:.4f}")
+    print(f"print {last}; month mean {m['mean_ms']:.5f} ({m['sep_n']} prints); remaining {m['remaining']} "
+          + (f"need avg {m['need_avg']:.4f}" if m["remaining"] else f"RESOLVED (final mean {m['mean_ms']:.5f} vs 1.000)"))
+    if m.get("resolved"):
+        log("stop-checked", f"{T} resolved: final month mean {m['mean_ms']:.5f} "
+            f"({'>' if m['mean_ms'] > 1.0 else '<'} 1.000) - strike "
+            f"{'WINS' if m['mean_ms'] > 1.0 else 'loses'}; no book action on a settled market.")
+        await c.close()
+        return
 
     ob = await c.get_orderbook(T, depth=20)
     fp = ob.get("orderbook_fp", ob)
