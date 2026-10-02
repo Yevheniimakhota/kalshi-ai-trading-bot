@@ -46,6 +46,20 @@ The verdict is **gated**: with fewer than 10 forward-settled trades, or on non-f
 
 The honest answer is often "no edge yet, keep a track record." That is the feature, not a bug.
 
+**This is not hypothetical — it runs on a real account, and it has already ruled against us.** The
+first forward-only verdict on the operator's live account (published 2026-10-02, n=55
+forward-settled trades):
+
+> **NO MEASURED EDGE** — won 58% vs. 60% implied by the book (edge −1.9 pts). Brier 0.2356.
+> The splits are instructive: the NO side shows +7.6 pts vs. the book (n=37); the YES side
+> −22.7 pts (n=17). The Edge Policy auto-derives from exactly this record — the losing
+> categories are blocked before the next trade, and the overconfidence haircuts shrink the
+> estimates that produced them.
+
+We ship the "no edge" verdict on our own account because a measurement harness that only ever
+prints flattering numbers is marketing, not measurement. See [docs/TRACK_RECORD.md](docs/TRACK_RECORD.md)
+— losses included.
+
 ---
 
 ## The Self-Improvement Loop
