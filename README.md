@@ -46,6 +46,20 @@ The verdict is **gated**: with fewer than 10 forward-settled trades, or on non-f
 
 The honest answer is often "no edge yet, keep a track record." That is the feature, not a bug.
 
+**This is not hypothetical — it runs on a real account, and it has already ruled against us.** The
+first forward-only verdict on the operator's live account (published 2026-10-02, n=55
+forward-settled trades):
+
+> **NO MEASURED EDGE** — won 58% vs. 60% implied by the book (edge −1.9 pts). Brier 0.2356.
+> The splits are instructive: the NO side shows +7.6 pts vs. the book (n=37); the YES side
+> −22.7 pts (n=17). The Edge Policy auto-derives from exactly this record — the losing
+> categories are blocked before the next trade, and the overconfidence haircuts shrink the
+> estimates that produced them.
+
+We ship the "no edge" verdict on our own account because a measurement harness that only ever
+prints flattering numbers is marketing, not measurement. See [docs/TRACK_RECORD.md](docs/TRACK_RECORD.md)
+— losses included.
+
 ---
 
 ## The Self-Improvement Loop
@@ -102,6 +116,29 @@ python cli.py dashboard
 > **Need API keys?**
 > - Kalshi key + private key → [kalshi.com/account/settings](https://kalshi.com/account/settings)
 > - OpenRouter key → [openrouter.ai](https://openrouter.ai/)
+
+---
+
+## Data-Fed Families (priced from the resolution source)
+
+Some families resolve on a published number. For those, pricing means reading
+the source — and the repo ships the source-readers plus the forward-scoring
+loop that grades the model against the book:
+
+| Family | Source | Tools | Docs |
+|---|---|---|---|
+| AAA gas/diesel daily + weekly/monthly ladders | AAA Fuel Gauge prints (national + 21 states) + wholesale futures | `scripts/aaa_data.py`, `scripts/aaa_futures.py`, `scripts/aaa_pricer.py price|path|score` | [docs/AAA.md](docs/AAA.md) |
+| Monthly GPU compute price (KXA100MS...) | Ornn OCPI public daily index | `scripts/ornn_data.py fetch|strike|ladder` | [docs/ORNN.md](docs/ORNN.md) |
+| OpenRouter weekly author text-share (KX*SHARE) | the rankings "Market Share" chart (Mon 10am ET) | `scripts/orshare_data.py snapshot|day|week` | `data/research/NOTES_orshare_family.json` |
+| Truth Social weekly post buckets | Roll Call count (Mon 10am ET) | `scripts/ts_posts.py` | `data/research/NOTES_ts_spree.json` |
+| Any priced snapshot | realized outcomes | `scripts/jev_score.py`, `scripts/aaa_pricer.py score` | `data/runtime/jev_scores.jsonl` |
+
+The discipline these encode: **every pricing event is snapshotted with the
+model's fair, the book's quote, and fee-aware edges — then scored against the
+realized value once it settles.** Standing verdicts per alert family live in
+`data/aaa/alerts/ADJUDICATIONS.md`. A scheduled morning job (4:05am PT) refreshes
+all sources, reprices every ladder, and drops gap alerts for the agent loop;
+it never places orders.
 
 ---
 

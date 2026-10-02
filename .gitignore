@@ -208,6 +208,15 @@ graphify-out/
 data/runtime/
 data/backtest/
 data/corpus/
+
+# AAA research data: raw page cache, pricing snapshots, futures caches, scores
+data/aaa/raw/
+data/aaa/pricings/
+data/aaa/futures/
+data/aaa/scores.jsonl
+data/research/
+data/orshare/snapshots/
+data/ornn/ladder_pricings/
 *.jsonl
 # ...but the shipped demo fixtures MUST travel with the repo (cli policy --demo).
 !tests/fixtures/demo_*.jsonl
@@ -224,3 +233,6 @@ secrets.yaml
 # any private-key variant (kalshi_private_key.txt, _prod, ...)
 kalshi_private_key*
 *private_key*
+
+# external API backfill dumps (parquet) — keep on disk, never in git
+data/external/

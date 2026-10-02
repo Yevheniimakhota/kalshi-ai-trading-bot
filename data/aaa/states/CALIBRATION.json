@@ -1,0 +1,153 @@
+{
+ "fitted": "2026-09-29",
+ "model": "state_delta = alpha + beta*nat_delta + resid",
+ "states": {
+  "OR": {
+   "alpha": -0.054,
+   "beta": 0.913,
+   "corr": 0.926,
+   "resid_sd": 0.641,
+   "n": 268
+  },
+  "MA": {
+   "alpha": -0.015,
+   "beta": 0.906,
+   "corr": 0.902,
+   "resid_sd": 0.775,
+   "n": 364
+  },
+  "NJ": {
+   "alpha": -0.048,
+   "beta": 0.851,
+   "corr": 0.907,
+   "resid_sd": 0.744,
+   "n": 355
+  },
+  "CA": {
+   "alpha": 0.017,
+   "beta": 0.94,
+   "corr": 0.862,
+   "resid_sd": 0.798,
+   "n": 319
+  },
+  "AZ": {
+   "alpha": -0.009,
+   "beta": 0.917,
+   "corr": 0.904,
+   "resid_sd": 0.682,
+   "n": 263
+  },
+  "CO": {
+   "alpha": -0.029,
+   "beta": 0.941,
+   "corr": 0.888,
+   "resid_sd": 0.652,
+   "n": 250
+  },
+  "CT": {
+   "alpha": -0.012,
+   "beta": 0.896,
+   "corr": 0.872,
+   "resid_sd": 0.829,
+   "n": 339
+  },
+  "FL": {
+   "alpha": -0.047,
+   "beta": 0.852,
+   "corr": 0.912,
+   "resid_sd": 0.664,
+   "n": 292
+  },
+  "GA": {
+   "alpha": -0.007,
+   "beta": 0.805,
+   "corr": 0.906,
+   "resid_sd": 0.597,
+   "n": 268
+  },
+  "IL": {
+   "alpha": -0.052,
+   "beta": 0.872,
+   "corr": 0.883,
+   "resid_sd": 0.703,
+   "n": 298
+  },
+  "MI": {
+   "alpha": -0.025,
+   "beta": 0.922,
+   "corr": 0.91,
+   "resid_sd": 0.674,
+   "n": 336
+  },
+  "MN": {
+   "alpha": -0.06,
+   "beta": 0.926,
+   "corr": 0.914,
+   "resid_sd": 0.68,
+   "n": 280
+  },
+  "NC": {
+   "alpha": -0.003,
+   "beta": 0.915,
+   "corr": 0.91,
+   "resid_sd": 0.615,
+   "n": 269
+  },
+  "NY": {
+   "alpha": -0.033,
+   "beta": 0.882,
+   "corr": 0.87,
+   "resid_sd": 0.774,
+   "n": 328
+  },
+  "OH": {
+   "alpha": -0.04,
+   "beta": 0.98,
+   "corr": 0.868,
+   "resid_sd": 0.729,
+   "n": 284
+  },
+  "PA": {
+   "alpha": -0.037,
+   "beta": 0.857,
+   "corr": 0.877,
+   "resid_sd": 0.712,
+   "n": 346
+  },
+  "TX": {
+   "alpha": -0.056,
+   "beta": 0.807,
+   "corr": 0.903,
+   "resid_sd": 0.634,
+   "n": 273
+  },
+  "VA": {
+   "alpha": -0.044,
+   "beta": 0.875,
+   "corr": 0.913,
+   "resid_sd": 0.634,
+   "n": 250
+  },
+  "NV": {
+   "alpha": 0.041,
+   "beta": 0.868,
+   "corr": 0.866,
+   "resid_sd": 0.861,
+   "n": 266
+  },
+  "WA": {
+   "alpha": -0.02,
+   "beta": 0.913,
+   "corr": 0.932,
+   "resid_sd": 0.638,
+   "n": 236
+  },
+  "WI": {
+   "alpha": -0.04,
+   "beta": 0.873,
+   "corr": 0.884,
+   "resid_sd": 0.728,
+   "n": 273
+  }
+ }
+}

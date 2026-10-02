@@ -1,0 +1,79 @@
+# Kalshi trade-dataset findings (Becker replication, our copy)
+
+_Data: 72.1M trades (2023-03 → 2025-11-25), 7,314,377 settled markets with results.
+Tool: `scripts/kalshi_dataset_analysis.py`; results JSON: `data/external/analysis_results.json`._
+
+## 1. The close-out "0.99c scalp" at exchange scale — dead as a taker trade
+
+Last trade at least 1h before close, win rate by price:
+
+| bucket | n | win rate |
+|---|---|---|
+| [0.90,0.95) | 5,813 | 93.5% |
+| [0.95,0.97) | 3,947 | 95.6% |
+| [0.97,0.99) | 7,035 | 97.3% |
+| **[0.99,1.0)** | **25,150** | **99.01%** |
+
+Buying at 0.99 with a 1h lead = +0.1% gross, negative after fees. At a 3h lead it is
+*worse* (98.45%). The last-trade print is well calibrated — there is no free 1%.
+This confirms and generalizes the 1-minute study (which measured the *fill*
+population, where adverse selection is stronger: 93.8%).
+
+## 2. Calibration is excellent everywhere except the longshots
+
+Win rates track price within ~1-2pts across the whole curve. The single exception:
+**YES contracts priced 1-20c massively underperform**: 1-5c YES wins 1.08% vs ~2.2c
+avg price (−50% of risked capital, n=1.16B contracts); 5-10c: −36%; 10-20c: −17%.
+This is the longshot bias / optimism tax, confirmed on 72M trades.
+
+## 3. Final-hour taker flow at ≥0.98
+
+99M contracts of taker YES at avg 0.986 in the final hour won 98.22% (−0.4%/ct).
+Even in the last hour, taking YES at 98-99c is slightly -EV. The counterparty
+(maker) earns the mirror.
+
+## 4. Policy implications (adopted)
+
+1. **Never take near-certain prices** — the level is priced. Enter certainty only
+   as a maker, model-gated (fair − price > spread + fee), small clips.
+2. **Never buy YES longshots** (≤20c) as takers — that is the casino side of the
+   exchange; the mirror (selling them via NO, with a model gate) is where the
+   structural premium sits.
+3. **Maker role is the durable edge** (Becker: +0.8-1.3pp per trade, symmetric by
+   side) — our order placement should default to resting limits, not marketable
+   orders, wherever timing allows.
+4. Our own data families behave like "Finance" (near-efficient) — forecasting
+   edges there must be measured, not assumed; the emotional categories carry
+   flow edge but we lack a model, so we stay out of sports/media as takers.
+
+## 5. Corrected cost-basis table (v2 rerun) — the honest map of taker EV
+
+EV per unit of capital risked, by price bucket and taker side (n = contracts):
+
+| bucket (yes price) | taker YES | taker NO |
+|---|---|---|
+| 1-5c | **−50.8%** | +0.3% |
+| 5-10c | **−36.4%** | +0.7% |
+| 10-20c | **−17.0%** | +1.0% |
+| 20-35c | +0.9% | −1.0% |
+| 35-65c | −2.1% | −2.1% |
+| 65-80c | −1.5% | −3.5% |
+| 80-90c | −0.1% | **−17.4%** |
+| 90-95c | +1.0% | **−26.6%** |
+| 95-97c | +0.3% | **−33.5%** |
+| 97-99c | +0.1% | **−39.6%** |
+| 99-100c | −0.4% | **+13.5%** |
+
+Read this as the exchange's wealth-transfer map: **takers lose catastrophically
+buying ANY cheap contract** — YES longshots (−17% to −51%) AND NO-at-80-99c
+(betting against near-certainties, −17% to −40%). The only consistently positive
+taker cells are buying expensive near-certainties (YES ≥90c: +0.1-1.0%, NO at
+99c+: +13.5%) — and those fills are only available when someone is dumping
+(= our measured adverse selection). Practical rule, now enforced: never buy
+anything priced ≤20c as a taker; near-certainties only as a gated maker.
+
+## Notes
+
+* Fuel-ladder crossing: 83 ladders, all crossed 0.95 with ≥1h to close (median
+  lead large because weekly/monthly ladders price near-extreme strikes at
+  issuance; not a clean per-day statistic).

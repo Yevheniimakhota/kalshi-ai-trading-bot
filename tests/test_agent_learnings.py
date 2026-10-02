@@ -96,8 +96,33 @@ def test_reconcile_idempotent_skips_filled():
     settlements = [_settlement("KX-DONE", result="yes", held_side="no", pnl=-99.0)]
     updated, newly = reconcile_outcomes([filled], settlements)
     assert newly == 0
-    # untouched: outcome unchanged, NOT overwritten by the contradictory settlement
-    assert updated[0]["outcome"] == {"won": True, "pnl": 0.8}
+    # won/pnl unchanged, NOT overwritten by the contradictory settlement; only
+    # the missing settled_time metadata is added from the authoritative source
+    assert updated[0]["outcome"]["won"] is True
+    assert updated[0]["outcome"]["pnl"] == 0.8
+    assert updated[0]["outcome"]["settled_time"] == "2026-06-20T01:00:00Z"
+
+
+def test_reconcile_idempotent_skips_filled_keeps_existing_settled_time():
+    filled = _journal("KX-DONE", "no", outcome={"won": True, "pnl": 0.8,
+                                                "settled_time": "2026-06-21T00:00:00Z"})
+    settlements = [_settlement("KX-DONE", result="no", pnl=0.8)]
+    updated, newly = reconcile_outcomes([filled], settlements)
+    assert newly == 0
+    # existing settled_time is never rewritten
+    assert updated[0]["outcome"]["settled_time"] == "2026-06-21T00:00:00Z"
+
+
+def test_reconcile_enrichment_makes_legacy_trades_forward_classifiable():
+    from src.agent.edge import forward_only
+    # a legacy journal record with a pre-settled outcome lacking timing
+    filled = _journal("KX-DONE", "no", outcome={"won": True, "pnl": 0.8})
+    filled["ts"] = "2026-06-19T00:00:00Z"
+    settlements = [_settlement("KX-DONE", result="no", pnl=0.8)]
+    updated, newly = reconcile_outcomes([filled], settlements)
+    assert newly == 0
+    split = forward_only(updated)
+    assert len(split["forward"]) == 1 and not split["unknown"]
 
 
 def test_reconcile_idempotent_on_rerun():

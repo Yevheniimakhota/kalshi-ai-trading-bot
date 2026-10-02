@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Ornn OCPI toolkit** — `scripts/ornn_data.py` (free public daily OCPI series for
+  A100/H100/H200/B200/RTX5090; month stats + strike break-even math for the
+  KXA100MS monthly compute-price markets), cached under `data/ornn/`, wired into
+  `run_daily.sh`, tests in `tests/test_ornn_data.py`, and `docs/ORNN.md` with the
+  2026-09-26 case study (all-time-low A100 print 0.95 vs a 0.49 YES ask; bought
+  40 on break-even math: remaining prints must average <= 0.9075 for the strike
+  to lose, MC P(loss) ~3%).
+- **AAA gas/diesel toolkit** — `scripts/aaa_data.py` (durable AAA Fuel Gauge print
+  series rebuilt from Wayback Machine snapshots + daily live capture), `scripts/aaa_futures.py`
+  (wholesale futures + retail-vs-wholesale convergence diagnostics), `scripts/aaa_pricer.py`
+  (strike-ladder pricing vs the live book with fee-aware edges, forward-scored by
+  `score`), `docs/AAA.md` (mechanics, model, and the 2026-09-26 efficiency verdict),
+  tests in `tests/test_aaa_pricer.py`. `run_daily.sh` now captures the corpus, the
+  AAA print and the pricing snapshot every run before the trading loop.
 - **TypeSafe Jev support** (`~typesafe/jev-latest`, OpenRouter Decisions API) — measured, not
   hyped: see **[docs/JEV.md](docs/JEV.md)**. `cli verify --jev` floors the skeptic's
   true-YES at Jev's independent P(YES) (stricter-only); `src/agent/jev.py` +
