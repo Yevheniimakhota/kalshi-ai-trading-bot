@@ -21,14 +21,41 @@ from desktop.command_builder import (
 )
 
 
+from desktop.process_manager import ProcessManager
+
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Kalshi Trading Bot")
         self.setMinimumSize(700, 600)
-
+        self.process_manager = ProcessManager(self)
         self._build_ui()
+        self._connect_process_signals()
+
+    def _connect_process_signals(self):
+        self.process_manager.output_received.connect(
+            self.log
+        )
+
+        self.process_manager.error_received.connect(
+            self._log_error
+        )
+
+        self.process_manager.process_started.connect(
+            self._on_process_started
+        )
+
+        self.process_manager.process_finished.connect(
+            self._on_process_finished
+        )
+
+        self.process_manager.process_error.connect(
+            self._on_process_error
+        )
+
 
     def _build_ui(self):
         central_widget = QWidget()
@@ -113,6 +140,10 @@ class MainWindow(QMainWindow):
             "Check Status"
         )
 
+        self.health_button = QPushButton(
+            "Check Health"
+        )
+
         tools_layout.addWidget(
             self.dashboard_button
         )
@@ -120,6 +151,11 @@ class MainWindow(QMainWindow):
         tools_layout.addWidget(
             self.status_button
         )
+
+        tools_layout.addWidget(
+            self.health_button
+        )
+
 
         layout.addLayout(tools_layout)
 
@@ -144,6 +180,14 @@ class MainWindow(QMainWindow):
             self._on_live_toggled
         )
 
+        self.health_button.clicked.connect(
+            self._on_health_clicked
+        )
+
+        self.status_button.clicked.connect(
+            self._on_status_clicked
+        )
+        
         self.log("Application started.")
         self.log("Ready.")
 
@@ -159,38 +203,72 @@ class MainWindow(QMainWindow):
 
         return TradingMode.PAPER
 
+
+    def _on_status_clicked(self):
+        self.log("")
+        self.log("Checking portfolio status...")
+
+        self.process_manager.start_cli(
+            ["status"]
+        )
+
+    def _on_health_clicked(self):
+        self.log("")
+        self.log("Running health check...")
+
+        self.process_manager.start_cli(
+            ["health"]
+        )
+
     def _on_start_clicked(self):
         strategy = self._selected_strategy()
         mode = self._selected_mode()
+
+        if mode == TradingMode.LIVE:
+            QMessageBox.warning(
+                self,
+                "Live Trading Disabled",
+                (
+                    "Live trading is temporarily "
+                    "disabled during desktop "
+                    "application development.\n\n"
+                    "Use Paper mode for testing."
+                ),
+            )
+
+            self.log(
+                "Live start blocked during "
+                "development."
+            )
+
+            return
 
         args = build_run_arguments(
             strategy,
             mode,
         )
 
-        command = format_command(args)
-
         self.log("")
         self.log(
-            f"Strategy: {strategy.value}"
+            f"Starting {strategy.value}..."
         )
 
         self.log(
             f"Mode: {mode.value}"
         )
 
-        self.log(
-            f"Command: {command}"
-        )
-
-        self.log(
-            "Dry GUI test only — bot was not started."
+        self.process_manager.start_cli(
+            args
         )
 
     def _on_stop_clicked(self):
-        self.log(
-            "No bot process is currently running."
-        )
+        if not self.process_manager.is_running():
+            self.log(
+                "No process is currently running."
+            )
+            return
+
+        self.process_manager.stop()
     def _on_live_toggled(self, checked: bool):
         if not checked:
             return
@@ -210,3 +288,57 @@ class MainWindow(QMainWindow):
 
         if result != QMessageBox.Yes:
             self.paper_radio.setChecked(True)
+
+    def _log_error(self, message: str):
+        self.log(
+            f"[ERROR] {message}"
+        )
+
+
+    def _on_process_started(self):
+        self.status_label.setText(
+            "● Running"
+        )
+
+        self.start_button.setEnabled(
+            False
+        )
+
+        self.stop_button.setEnabled(
+            True
+        )
+
+        self.log(
+            "Process started."
+        )
+
+
+    def _on_process_finished(
+        self,
+        exit_code: int,
+    ):
+        self.status_label.setText(
+            "● Stopped"
+        )
+
+        self.start_button.setEnabled(
+            True
+        )
+
+        self.stop_button.setEnabled(
+            False
+        )
+
+        self.log(
+            f"Process finished "
+            f"with exit code {exit_code}."
+        )
+
+
+    def _on_process_error(
+        self,
+        message: str,
+    ):
+        self.log(
+            f"[PROCESS ERROR] {message}"
+        )
