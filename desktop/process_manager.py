@@ -1,7 +1,12 @@
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import QObject, QProcess, Signal
+from PySide6.QtCore import (
+    QObject,
+    QProcess,
+    QProcessEnvironment,
+    Signal,
+)
 
 
 class ProcessManager(QObject):
@@ -37,7 +42,7 @@ class ProcessManager(QObject):
             self._on_error
         )
 
-    def start_cli(self, arguments: list[str]) -> bool:
+    def start_cli(self, arguments: list[str], environment: dict[str, str] | None = None,) -> bool:
         if self.is_running():
             self.error_received.emit(
                 "A process is already running."
@@ -68,7 +73,21 @@ class ProcessManager(QObject):
             f"$ {program} {cli_path.name} "
             + " ".join(arguments)
         )
+        process_env = (
+            QProcessEnvironment.systemEnvironment()
+        )
 
+        if environment:
+            for key, value in environment.items():
+                if value:
+                    process_env.insert(
+                        key,
+                        value,
+                    )
+
+        self.process.setProcessEnvironment(
+            process_env
+)
         self.process.start(
             program,
             process_arguments,

@@ -22,7 +22,8 @@ from desktop.command_builder import (
 
 
 from desktop.process_manager import ProcessManager
-
+from desktop.config_manager import ConfigManager
+from desktop.settings_dialog import SettingsDialog
 
 
 class MainWindow(QMainWindow):
@@ -32,6 +33,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Kalshi Trading Bot")
         self.setMinimumSize(700, 600)
         self.process_manager = ProcessManager(self)
+        self.config_manager = ConfigManager()
+        self.process_manager = ProcessManager(
+            self
+        )
         self._build_ui()
         self._connect_process_signals()
 
@@ -159,6 +164,18 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(tools_layout)
 
+        # Settings
+        self.settings_button = QPushButton(
+            "Settings"
+        )
+
+        layout.addWidget(
+            self.settings_button
+        )
+        self.settings_button.clicked.connect(
+            self._open_settings
+        )
+
         # Logs
         layout.addWidget(QLabel("Logs"))
 
@@ -204,12 +221,56 @@ class MainWindow(QMainWindow):
         return TradingMode.PAPER
 
 
+    def _build_process_environment(self,) -> dict[str, str]:
+
+        environment = {}
+
+        kalshi_key = (
+            self.config_manager
+            .get_kalshi_api_key()
+        )
+
+        openrouter_key = (
+            self.config_manager
+            .get_openrouter_api_key()
+        )
+
+        if kalshi_key:
+            environment[
+                "KALSHI_API_KEY"
+            ] = kalshi_key
+
+        if openrouter_key:
+            environment[
+                "OPENROUTER_API_KEY"
+            ] = openrouter_key
+
+        # Force UTF-8 for child Python process
+        environment[
+            "PYTHONUTF8"
+        ] = "1"
+
+        environment[
+            "PYTHONIOENCODING"
+        ] = "utf-8"
+
+        return environment
+
+    def _open_settings(self):
+        dialog = SettingsDialog(
+            self.config_manager,
+            self,
+        )
+
+        dialog.exec()
+
     def _on_status_clicked(self):
         self.log("")
         self.log("Checking portfolio status...")
 
         self.process_manager.start_cli(
-            ["status"]
+            ["status"],
+            environment=self._build_process_environment(),
         )
 
     def _on_health_clicked(self):
@@ -217,12 +278,21 @@ class MainWindow(QMainWindow):
         self.log("Running health check...")
 
         self.process_manager.start_cli(
-            ["health"]
+            ["health"],
+            environment=self._build_process_environment(),
         )
 
     def _on_start_clicked(self):
         strategy = self._selected_strategy()
         mode = self._selected_mode()
+        environment = (
+            self._build_process_environment()
+        )
+
+        self.process_manager.start_cli(
+            args,
+            environment=environment,
+        )
 
         if mode == TradingMode.LIVE:
             QMessageBox.warning(
