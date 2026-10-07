@@ -118,6 +118,30 @@ class MainWindow(QMainWindow):
 
         layout.addLayout(mode_layout)
 
+
+        environment_label = QLabel("Kalshi Environment")
+        layout.addWidget(environment_label)
+
+        environment_layout = QHBoxLayout()
+
+        self.demo_radio = QRadioButton("Demo")
+        self.production_radio = QRadioButton("Production")
+
+        self.demo_radio.setChecked(True)
+
+        environment_layout.addWidget(
+            self.demo_radio
+        )
+
+        environment_layout.addWidget(
+            self.production_radio
+        )
+
+        layout.addLayout(
+            environment_layout
+        )
+
+
         # Start / Stop
         controls_layout = QHBoxLayout()
 
@@ -221,6 +245,10 @@ class MainWindow(QMainWindow):
     def _build_process_environment(self,) -> dict[str, str]:
 
         environment = {}
+        if self.demo_radio.isChecked():
+            environment["KALSHI_ENV"] = "demo"
+        else:
+            environment["KALSHI_ENV"] = "prod"
         private_key_path = (
             self.config_manager
             .get_private_key_path()

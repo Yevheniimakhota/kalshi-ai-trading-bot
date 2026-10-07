@@ -21,7 +21,7 @@ class ProcessManager(QObject):
         super().__init__(parent)
 
         self.process = QProcess(self)
-
+        self._stop_requested = False
         self.process.readyReadStandardOutput.connect(
             self._read_stdout
         )
@@ -43,6 +43,7 @@ class ProcessManager(QObject):
         )
 
     def start_cli(self, arguments: list[str], environment: dict[str, str] | None = None,) -> bool:
+        self._stop_requested = False
         if self.is_running():
             self.error_received.emit(
                 "A process is already running."
@@ -99,6 +100,8 @@ class ProcessManager(QObject):
         if not self.is_running():
             return
 
+        self._stop_requested = True
+
         self.output_received.emit(
             "Stopping process..."
         )
@@ -108,9 +111,8 @@ class ProcessManager(QObject):
         if not self.process.waitForFinished(3000):
             self.output_received.emit(
                 "Process did not stop gracefully. "
-                "Killing it..."
+                "Forcing shutdown..."
             )
-
             self.process.kill()
 
     def is_running(self) -> bool:
@@ -151,16 +153,22 @@ class ProcessManager(QObject):
                 data.rstrip()
             )
 
-    def _on_finished(
-        self,
-        exit_code: int,
-        exit_status,
-    ):
+    def _on_finished(self,exit_code: int,exit_status,):
+        if self._stop_requested:
+            self.output_received.emit(
+                "Process stopped by user."
+            )
+
         self.process_finished.emit(
             exit_code
         )
 
+        self._stop_requested = False
+
     def _on_error(self, error):
+        if self._stop_requested:
+            return
+
         self.process_error.emit(
             self.process.errorString()
-        )
+    )

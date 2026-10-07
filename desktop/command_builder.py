@@ -2,7 +2,7 @@ from enum import Enum
 
 
 class Strategy(str, Enum):
-    AI_ENSEMBLE = "AI Ensemble"
+    AI_DIRECTIONAL = "AI Directional"
     SAFE_COMPOUNDER = "Safe Compounder"
     BEAST_MODE = "Beast Mode"
 
@@ -12,21 +12,7 @@ class TradingMode(str, Enum):
     LIVE = "Live"
 
 
-def build_run_arguments(
-    strategy: Strategy,
-    mode: TradingMode,
-) -> list[str]:
-    """
-    Build arguments for the existing cli.py run command.
-
-    Example:
-        AI Ensemble + Paper
-        -> ["run"]
-
-        Safe Compounder + Live
-        -> ["run", "--safe-compounder", "--live"]
-    """
-
+def build_run_arguments(strategy: Strategy, mode: TradingMode,) -> list[str]:
     args = ["run"]
 
     if strategy == Strategy.SAFE_COMPOUNDER:
