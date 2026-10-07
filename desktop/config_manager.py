@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import shutil
 
 import keyring
 
@@ -18,6 +19,10 @@ class ConfigManager:
 
         self.config_path = (
             self.data_dir / "config.json"
+        )
+        self.private_key_path = (
+            self.data_dir
+            / "kalshi_private_key.pem"
         )
 
     # -------------------------
@@ -57,6 +62,39 @@ class ConfigManager:
             SERVICE_NAME,
             OPENROUTER_API_KEY,
         )
+
+    def import_private_key( self,source_path: str | Path,) -> Path:
+        source = Path(source_path)
+
+        if not source.exists():
+            raise FileNotFoundError(
+                f"Private key not found: {source}"
+            )
+
+        if not source.is_file():
+            raise ValueError(
+                "Selected private key is not a file."
+            )
+
+        if source.suffix.lower() != ".pem":
+            raise ValueError(
+                "Kalshi private key must be a .pem file."
+            )
+
+        shutil.copy2(
+            source,
+            self.private_key_path,
+        )
+
+        return self.private_key_path
+
+
+    def get_private_key_path(self,) -> Path | None:
+
+        if self.private_key_path.exists():
+            return self.private_key_path
+
+        return None
 
     # -------------------------
     # Normal application config

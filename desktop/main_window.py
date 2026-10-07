@@ -34,9 +34,6 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(700, 600)
         self.process_manager = ProcessManager(self)
         self.config_manager = ConfigManager()
-        self.process_manager = ProcessManager(
-            self
-        )
         self._build_ui()
         self._connect_process_signals()
 
@@ -224,6 +221,11 @@ class MainWindow(QMainWindow):
     def _build_process_environment(self,) -> dict[str, str]:
 
         environment = {}
+        private_key_path = (
+            self.config_manager
+            .get_private_key_path()
+        )
+
 
         kalshi_key = (
             self.config_manager
@@ -234,6 +236,11 @@ class MainWindow(QMainWindow):
             self.config_manager
             .get_openrouter_api_key()
         )
+
+        if private_key_path:
+                    environment[
+                        "KALSHI_PRIVATE_KEY_PATH"
+                    ] = str(private_key_path)
 
         if kalshi_key:
             environment[
@@ -285,15 +292,8 @@ class MainWindow(QMainWindow):
     def _on_start_clicked(self):
         strategy = self._selected_strategy()
         mode = self._selected_mode()
-        environment = (
-            self._build_process_environment()
-        )
 
-        self.process_manager.start_cli(
-            args,
-            environment=environment,
-        )
-
+        # Live trading remains disabled during development.
         if mode == TradingMode.LIVE:
             QMessageBox.warning(
                 self,
@@ -307,28 +307,34 @@ class MainWindow(QMainWindow):
             )
 
             self.log(
-                "Live start blocked during "
-                "development."
+                "Live start blocked during development."
             )
-
             return
 
+        # Build CLI arguments first.
         args = build_run_arguments(
             strategy,
             mode,
         )
 
+        # Build environment containing credentials + UTF-8 settings.
+        environment = self._build_process_environment()
+
         self.log("")
         self.log(
             f"Starting {strategy.value}..."
         )
-
         self.log(
             f"Mode: {mode.value}"
         )
+        self.log(
+            f"Command: {format_command(args)}"
+        )
 
+        # Start the process only once.
         self.process_manager.start_cli(
-            args
+            args,
+            environment=environment,
         )
 
     def _on_stop_clicked(self):
