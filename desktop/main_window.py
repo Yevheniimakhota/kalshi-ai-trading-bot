@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QSignalBlocker
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QTextEdit,
     QVBoxLayout,
     QWidget,
+    QButtonGroup,
 )
 
 from desktop.command_builder import (
@@ -26,38 +27,52 @@ from desktop.config_manager import ConfigManager
 from desktop.settings_dialog import SettingsDialog
 
 
+
+
+
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
         self.setWindowTitle("Kalshi Trading Bot")
         self.setMinimumSize(700, 600)
-        self.process_manager = ProcessManager(self)
+        self.bot_process = ProcessManager(self)
+        self.command_process = ProcessManager(self)
         self.config_manager = ConfigManager()
         self._build_ui()
         self._connect_process_signals()
+        self._load_preferences()
+        self._connect_preference_signals()
 
     def _connect_process_signals(self):
-        self.process_manager.output_received.connect(
-            self.log
-        )
+        for manager in (self.bot_process, self.command_process):
+            manager.output_received.connect(self.log)
+            manager.error_received.connect(self._log_error)
+            manager.process_error.connect(self._on_process_error)
 
-        self.process_manager.error_received.connect(
-            self._log_error
-        )
+        self.bot_process.process_started.connect(self._on_process_started)
+        self.bot_process.process_finished.connect(self._on_process_finished)
+        self.command_process.process_started.connect(self._on_command_started)
+        self.command_process.process_finished.connect(self._on_command_finished)
 
-        self.process_manager.process_started.connect(
-            self._on_process_started
-        )
+    def _connect_preference_signals(self):
+        self.strategy_combo.currentIndexChanged.connect(self._save_preferences)
+        self.demo_radio.toggled.connect(self._save_preferences)
+        self.production_radio.toggled.connect(self._save_preferences)
+        self.paper_radio.toggled.connect(self._save_preferences)
+        self.live_radio.toggled.connect(self._save_preferences)
 
-        self.process_manager.process_finished.connect(
-            self._on_process_finished
-        )
+    def _on_command_started(self):
+        self.health_button.setEnabled(False)
+        self.status_button.setEnabled(False)
+        self.log("Command started.")
 
-        self.process_manager.process_error.connect(
-            self._on_process_error
-        )
-
+    def _on_command_finished(self, exit_code: int):
+        self.health_button.setEnabled(True)
+        self.status_button.setEnabled(True)
+        self.log(f"Command finished with exit code {exit_code}.")
 
     def _build_ui(self):
         central_widget = QWidget()
@@ -112,6 +127,11 @@ class MainWindow(QMainWindow):
         self.live_radio = QRadioButton("Live")
 
         self.paper_radio.setChecked(True)
+        self.trading_mode_group = QButtonGroup(self)
+        self.trading_mode_group.setExclusive(True)
+
+        self.trading_mode_group.addButton(self.paper_radio)
+        self.trading_mode_group.addButton(self.live_radio)
 
         mode_layout.addWidget(self.paper_radio)
         mode_layout.addWidget(self.live_radio)
@@ -128,6 +148,12 @@ class MainWindow(QMainWindow):
         self.production_radio = QRadioButton("Production")
 
         self.demo_radio.setChecked(True)
+
+        self.environment_group = QButtonGroup(self)
+        self.environment_group.setExclusive(True)
+
+        self.environment_group.addButton(self.demo_radio)
+        self.environment_group.addButton(self.production_radio)
 
         environment_layout.addWidget(
             self.demo_radio
@@ -303,7 +329,7 @@ class MainWindow(QMainWindow):
         self.log("")
         self.log("Checking portfolio status...")
 
-        self.process_manager.start_cli(
+        self.command_process.start_cli(
             ["status"],
             environment=self._build_process_environment(),
         )
@@ -312,8 +338,7 @@ class MainWindow(QMainWindow):
         self.log("")
         self.log("Running health check...")
 
-        self.process_manager.start_cli(
-            ["health"],
+        self.command_process.start_cli(["health"], 
             environment=self._build_process_environment(),
         )
 
@@ -360,19 +385,18 @@ class MainWindow(QMainWindow):
         )
 
         # Start the process only once.
-        self.process_manager.start_cli(
-            args,
-            environment=environment,
+        self.bot_process.start_cli(
+            args, environment=environment,
         )
 
     def _on_stop_clicked(self):
-        if not self.process_manager.is_running():
+        if not self.bot_process.is_running():
             self.log(
                 "No process is currently running."
             )
             return
+        self.bot_process.stop()
 
-        self.process_manager.stop()
     def _on_live_toggled(self, checked: bool):
         if not checked:
             return
@@ -446,3 +470,55 @@ class MainWindow(QMainWindow):
         self.log(
             f"[PROCESS ERROR] {message}"
         )
+
+
+    def _load_preferences(self):
+        preferences = self.config_manager.load_preferences()
+
+        environment = preferences.get("environment", "demo")
+
+        if environment == "prod":
+            self.production_radio.setChecked(True)
+        else:
+            self.demo_radio.setChecked(True)
+
+        trading_mode = preferences.get("trading_mode", "Paper")
+
+        if trading_mode == "Live":
+            self.live_radio.blockSignals(True)
+            self.live_radio.setChecked(True)
+            self.live_radio.blockSignals(False)
+        else:
+            self.paper_radio.setChecked(True)
+
+        strategy = preferences.get("strategy", "AI Directional")
+
+        index = self.strategy_combo.findData(strategy)
+
+        if index >= 0:
+            self.strategy_combo.setCurrentIndex(index)
+
+    def _save_preferences(self, *args):
+        preferences = {
+            "environment": "demo" if self.demo_radio.isChecked() else "prod",
+            "trading_mode": self._selected_mode().value,
+            "strategy": self._selected_strategy().value,
+        }
+        self.config_manager.save_preferences(preferences)
+
+    def closeEvent(self, event):
+        if self.bot_process.is_running():
+            QMessageBox.warning(
+                self, "Bot Running",
+                "Stop the trading bot before closing the application.",
+            )
+            event.ignore()
+            return
+        if self.command_process.is_running():
+            QMessageBox.warning(
+                self, "Command Running",
+                "Wait for the current command to finish before closing.",
+            )
+            event.ignore()
+            return
+        event.accept()

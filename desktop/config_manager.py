@@ -13,6 +13,7 @@ KALSHI_API_KEY = "kalshi_api_key"
 OPENROUTER_API_KEY = "openrouter_api_key"
 
 
+
 class ConfigManager:
     def __init__(self):
         self.data_dir = get_user_data_dir()
@@ -24,6 +25,14 @@ class ConfigManager:
             self.data_dir
             / "kalshi_private_key.pem"
         )
+
+    def load_preferences(self) -> dict:
+        return self.load_config().get("preferences", {})
+
+    def save_preferences(self, preferences: dict) -> None:
+        config = self.load_config()
+        config["preferences"] = {**config.get("preferences", {}), **preferences}
+        self.save_config(config)
 
     # -------------------------
     # Secret credentials
@@ -121,12 +130,7 @@ class ConfigManager:
         self,
         config: dict,
     ):
-        with self.config_path.open(
-            "w",
-            encoding="utf-8",
-        ) as file:
-            json.dump(
-                config,
-                file,
-                indent=4,
-            )
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        temporary_path = self.config_path.with_suffix(".tmp")
+        temporary_path.write_text(json.dumps(config, indent=4), encoding="utf-8")
+        temporary_path.replace(self.config_path)
