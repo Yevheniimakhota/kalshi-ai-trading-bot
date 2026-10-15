@@ -59,14 +59,23 @@ def setup_logging(log_level: str = "INFO") -> None:
         cache_logger_on_first_use=True,
     )
     
+    # Configure UTF-8 before creating stream handlers (Windows cp1251 fix).
+    for stream in (sys.stdout, sys.stderr):
+        if stream is not None and hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except (OSError, ValueError):
+                pass
+
     # Configure standard library logging
     logging.basicConfig(
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         level=getattr(logging, log_level.upper()),
+        force=True,  # Replace any pre-existing handlers using cp1251.
         handlers=[
-            logging.FileHandler(log_file),
-            logging.FileHandler(latest_log, mode='w'),
-            logging.StreamHandler(sys.stdout),
+            logging.FileHandler(log_file, encoding="utf-8"),
+            logging.FileHandler(latest_log, mode="w", encoding="utf-8"),
+            logging.StreamHandler(sys.stdout if sys.stdout is not None else sys.stderr),
         ],
     )
     

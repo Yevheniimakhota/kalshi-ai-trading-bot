@@ -16,6 +16,7 @@ from src.utils.database import DatabaseManager, Position, TradeLog
 from src.config.settings import settings
 from src.utils.logging_setup import setup_logging, get_trading_logger
 from src.clients.kalshi_client import KalshiClient
+from src.utils.market_prices import get_market_prices
 
 async def should_exit_position(
     position: Position, 
@@ -187,8 +188,17 @@ async def run_tracking(db_manager: Optional[DatabaseManager] = None):
                     continue
 
                 # Get current prices
-                current_yes_price = market_data.get('yes_price', 0) / 100  # Convert cents to dollars
-                current_no_price = market_data.get('no_price', 0) / 100
+                yes_bid, _yes_ask, no_bid, _no_ask = get_market_prices(market_data)
+                # Use executable bid prices for selling existing positions.
+                current_yes_price = yes_bid
+                current_no_price = no_bid
+                selected_bid = current_yes_price if position.side == "YES" else current_no_price
+                if market_data.get("status") != "closed" and not (0 < selected_bid < 1):
+                    logger.warning(
+                        f"Missing/invalid exit bid for {position.market_id}: "
+                        f"side={position.side}, bid={selected_bid}. Skipping exit evaluation."
+                    )
+                    continue
                 market_status = market_data.get('status', 'unknown')
                 market_result = market_data.get('result')  # Market resolution result
                 

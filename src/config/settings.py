@@ -11,17 +11,47 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+def get_kalshi_base_url() -> str:
+    """
+    Return the Kalshi API base URL for the selected environment.
+
+    Environment variables:
+        KALSHI_ENV=demo
+        KALSHI_ENV=prod
+
+    KALSHI_API_BASE_URL can be used as an explicit override.
+    """
+
+    custom_url = os.getenv(
+        "KALSHI_API_BASE_URL"
+    )
+
+    if custom_url:
+        return custom_url.rstrip("/")
+
+    environment = os.getenv(
+        "KALSHI_ENV",
+        "prod",
+    ).lower()
+
+    if environment == "demo":
+        return "https://demo-api.kalshi.co"
+
+    return "https://api.elections.kalshi.com"
+
+
+
+
 
 @dataclass
 class APIConfig:
     """API configuration settings."""
     kalshi_api_key: str = field(default_factory=lambda: os.getenv("KALSHI_API_KEY", ""))
-    kalshi_base_url: str = "https://api.elections.kalshi.com"  # Updated to new API endpoint
+    kalshi_base_url: str = field( default_factory=get_kalshi_base_url)
     openai_api_key: str = field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
     openrouter_api_key: str = field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY", ""))
     openai_base_url: str = "https://api.openai.com/v1"
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
-
     # xai_api_key removed — all models now route through OpenRouter
 
 

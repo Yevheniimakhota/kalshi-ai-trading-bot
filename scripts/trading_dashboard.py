@@ -11,6 +11,7 @@ trading system including:
 - System health metrics
 - P&L analytics by strategy
 """
+from decimal import Decimal
 
 import streamlit as st
 import asyncio
@@ -20,7 +21,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import sys
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import json
 
 # Add parent directory to path for imports
@@ -28,6 +29,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.utils.database import DatabaseManager
 from src.clients.kalshi_client import KalshiClient
+from desktop.runtime_state import read_runtime_state
+
 
 # Configure Streamlit page
 st.set_page_config(
@@ -99,41 +102,40 @@ def load_performance_data():
             
             # Get LIVE positions from Kalshi API (not just database)
             positions_response = await kalshi_client.get_positions()
-            kalshi_positions = positions_response.get('market_positions', [])
-            
-            # Convert Kalshi positions to simple dictionaries for caching
+            kalshi_positions = positions_response.get("market_positions", [])
+
             positions = []
+
             for pos in kalshi_positions:
-                if pos.get('position', 0) != 0:  # Only active positions
-                    ticker = pos.get('ticker')
-                    position_count = pos.get('position', 0)
-                    
-                    # Create a simple dictionary with only serializable types
-                    position_dict = {
-                        'market_id': str(ticker),
-                        'side': 'YES' if position_count > 0 else 'NO',
-                        'quantity': int(abs(position_count)),
-                        'entry_price': 0.50,  # Will be updated below
-                        'timestamp': datetime.now().isoformat(),
-                        'strategy': 'live_sync',
-                        'status': 'open',
-                        'stop_loss_price': None,
-                        'take_profit_price': None
-                    }
-                    
-                    # Try to get current market price for better accuracy
-                    try:
-                        market_data = await kalshi_client.get_market(ticker)
-                        if market_data and 'market' in market_data:
-                            market_info = market_data['market']
-                            if position_count > 0:  # YES position
-                                position_dict['entry_price'] = float((market_info.get('yes_bid', 0) + market_info.get('yes_ask', 100)) / 2 / 100)
-                            else:  # NO position
-                                position_dict['entry_price'] = float((market_info.get('no_bid', 0) + market_info.get('no_ask', 100)) / 2 / 100)
-                    except:
-                        position_dict['entry_price'] = 0.50  # Keep default price as float
-                    
-                    positions.append(position_dict)
+                position_fp = Decimal(str(
+                    pos.get("position_fp", pos.get("position", 0))
+                ))
+
+                if position_fp == 0:
+                    continue
+
+                ticker = pos.get("ticker", "")
+                exposure = Decimal(str(
+                    pos.get("market_exposure_dollars", 0)
+                ))
+
+                positions.append({
+                    "market_id": ticker,
+                    "side": "YES" if position_fp > 0 else "NO",
+                    "quantity": float(abs(position_fp)),
+                    "entry_price": (
+                        float(exposure / abs(position_fp))
+                        if position_fp != 0 else 0.0
+                    ),
+                    "timestamp": pos.get(
+                        "last_updated_ts",
+                        datetime.now().isoformat()
+                    ),
+                    "strategy": "Kalshi API",
+                    "status": "open",
+                    "stop_loss_price": None,
+                    "take_profit_price": None,
+                })
             
             await db_manager.close()
             
@@ -194,7 +196,7 @@ def load_llm_data():
         st.error(f"Error loading LLM data: {e}")
         return [], {}
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=30)  # Refresh portfolio metrics within 30 seconds
 def load_system_health():
     """Load system health metrics including both available cash and total portfolio value."""
     try:
@@ -219,7 +221,7 @@ def load_system_health():
             for position in market_positions:
                 try:
                     ticker = position.get('ticker')
-                    position_count = position.get('position', 0)
+                    position_count = float(position.get("position_fp", position.get("position", 0)))
                     
                     if ticker and position_count != 0:
                         # Get current market data
@@ -266,52 +268,91 @@ def load_system_health():
             'position_value': 0.0
         }
 
-def main():
-    """Main dashboard function."""
-    
-    st.title("🚀 Trading System Dashboard")
-    st.markdown("**Real-time monitoring and analysis of your automated trading system**")
-    
-    # Add refresh button to clear cache
-    col1, col2 = st.columns([4, 1])
-    with col2:
-        if st.button("🔄 Refresh Data", help="Clear cache and reload all data"):
-            st.cache_data.clear()
-            st.rerun()
-    
-    # Sidebar for navigation
-    st.sidebar.title("📊 Dashboard")
-    
-    page = st.sidebar.selectbox(
-        "Select View",
-        [
-            "📈 Overview",
-            "🎯 Strategy Performance", 
-            "🤖 LLM Analysis",
-            "💼 Positions & Trades",
-            "⚠️ Risk Management",
-            "🔧 System Health"
-        ]
-    )
-    
-    # Load data with error handling
-    try:
-        performance_data, positions = load_performance_data()
-        llm_queries, llm_stats = load_llm_data()
-        system_health_data = load_system_health()
-    except Exception as e:
-        st.error(f"Error loading dashboard data: {e}")
-        st.info("Please check your system connections and try refreshing.")
+@st.cache_data(ttl=30, show_spinner=False)
+def load_fills(ticker=None):
+    """Load ALL account fills with cursor pagination. No trading actions."""
+    async def fetch():
+        async with KalshiClient() as client:
+            result = []
+            cursor = None
+            seen = set()
+            while True:
+                params = {"limit": 200}
+                if ticker:
+                    params["ticker"] = ticker
+                if cursor:
+                    params["cursor"] = cursor
+                response = await client._make_authenticated_request(
+                    "GET", "/trade-api/v2/portfolio/fills", params=params
+                )
+                result.extend(response.get("fills", []))
+                cursor = response.get("cursor")
+                if not cursor or cursor in seen:
+                    break
+                seen.add(cursor)
+            return result
+
+    return asyncio.run(fetch())
+
+
+def render_fills_table(fills, key):
+    if not fills:
+        st.info("No fills found for this selection.")
         return
-    
-    # Show data status in sidebar
+
+    df = pd.json_normalize(fills)
+
+    # Remove duplicate fills, if any
+    if "fill_id" in df.columns:
+        df = df.drop_duplicates(subset=["fill_id"])
+
+    csv_data = df.to_csv(index=False).encode("utf-8-sig")
+
+    st.success(f"Loaded {len(df)} trade records")
+    st.dataframe(df, width="stretch", hide_index=True)
+
+    filename = (
+        f"{key}_{len(df)}_trades_"
+        f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.csv"
+    )
+
+    st.download_button(
+        label=f"⬇ Export {len(df)} trades (CSV)",
+        data=csv_data,
+        file_name=filename,
+        mime="text/csv",
+        key=key,
+        on_click="ignore",
+    )
+
+    st.caption(
+        f"CSV contains {len(df)} trade records. "
+        "Raw fills, not a calculated tax report."
+    )
+
+#LIVE REFRESH 30 seconds
+@st.fragment(run_every="30s")
+def render_live_dashboard(page):
+    """Refresh live sections without resetting sidebar or other controls."""
+    state_path = os.environ.get("KALSHI_RUNTIME_STATE_PATH", "")
+    runtime = read_runtime_state(state_path) if state_path else {}
+    running = bool(runtime.get("running", False))
+    status_col, env_col, mode_col, strategy_col = st.columns(4)
+    status_col.metric("Bot status", "Running" if running else "Stopped")
+    env_col.metric("Kalshi environment", str(runtime.get("environment", "Unknown")).upper())
+    mode_col.metric("Trading mode", str(runtime.get("mode", "Unknown")))
+    strategy_col.metric("Strategy", str(runtime.get("strategy", "Unknown")))
+
+    performance_data, positions = load_performance_data()
+    llm_queries, llm_stats = load_llm_data()
+    system_health_data = load_system_health()
+
     st.sidebar.markdown("---")
     st.sidebar.markdown("**📊 Data Status:**")
-    st.sidebar.metric("Active Positions", len(positions) if positions else 0)
-    st.sidebar.metric("LLM Queries (24h)", len(llm_queries) if llm_queries else 0)
+    st.sidebar.metric("Active Positions", len(positions))
+    st.sidebar.metric("LLM Queries (24h)", len(llm_queries))
     st.sidebar.metric("Portfolio Balance", f"${system_health_data.get('total_portfolio_value', 0):.2f}")
-    
-    # Page routing
+
     if page == "📈 Overview":
         show_overview(performance_data, positions, system_health_data)
     elif page == "🎯 Strategy Performance":
@@ -324,6 +365,24 @@ def main():
         show_risk_management(performance_data, positions, system_health_data['total_portfolio_value'])
     elif page == "🔧 System Health":
         show_system_health(system_health_data['available_cash'], system_health_data['positions_count'], llm_stats)
+
+
+def main():
+    """Main dashboard function."""
+    
+    st.title("🚀 Trading System Dashboard")
+    st.markdown("**Real-time monitoring and analysis of your automated trading system**")
+    if st.button("🔄 Refresh Data", help="Clear cache and reload all data"):
+        st.cache_data.clear()
+        st.rerun()
+    #st.caption("Automatic refresh: every 60 seconds. Manual refresh is also available.")
+    st.sidebar.title("📊 Dashboard")
+    page = st.sidebar.selectbox("Select View", [
+        "📈 Overview", "🎯 Strategy Performance", "🤖 LLM Analysis",
+        "💼 Positions & Trades", "⚠️ Risk Management", "🔧 System Health"
+    ])
+    render_live_dashboard(page)
+
 
 def show_overview(performance_data, positions, system_health_data):
     """Show overview dashboard."""
@@ -452,7 +511,7 @@ def show_overview(performance_data, positions, system_health_data):
                 color_continuous_scale='RdYlGn'
             )
             fig_pnl.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_pnl, use_container_width=True)
+            st.plotly_chart(fig_pnl, width="stretch")
         
         with col2:
             # Win rate by strategy
@@ -465,7 +524,7 @@ def show_overview(performance_data, positions, system_health_data):
                 color_continuous_scale='Blues'
             )
             fig_winrate.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_winrate, use_container_width=True)
+            st.plotly_chart(fig_winrate, width="stretch")
     else:
         st.info("📊 **No strategy data yet** - Run the trading system to start collecting performance data")
     
@@ -497,7 +556,7 @@ def show_overview(performance_data, positions, system_health_data):
         
         if position_data:
             df = pd.DataFrame(position_data)
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            st.dataframe(df, width="stretch", hide_index=True)
     else:
         st.info("No active positions currently.")
 
@@ -537,7 +596,7 @@ def show_strategy_performance(performance_data):
             })
         
         df = pd.DataFrame(comparison_data)
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, width="stretch", hide_index=True)
         
         # Performance charts
         col1, col2 = st.columns(2)
@@ -569,7 +628,7 @@ def show_strategy_performance(performance_data):
                 yaxis_title="Win Rate (%)",
                 height=500
             )
-            st.plotly_chart(fig_risk, use_container_width=True)
+            st.plotly_chart(fig_risk, width="stretch")
         
         with col2:
             # Capital deployment
@@ -579,7 +638,7 @@ def show_strategy_performance(performance_data):
                 title="Capital Deployment by Strategy"
             )
             fig_capital.update_layout(height=500)
-            st.plotly_chart(fig_capital, use_container_width=True)
+            st.plotly_chart(fig_capital, width="stretch")
     
     else:
         # Show individual strategy details
@@ -673,7 +732,7 @@ def show_llm_analysis(llm_queries, llm_stats):
                 color=[stats['total_cost'] for stats in llm_stats.values()],
                 color_continuous_scale='Blues'
             )
-            st.plotly_chart(fig_usage, use_container_width=True)
+            st.plotly_chart(fig_usage, width="stretch")
     
     # Query filters
     st.subheader("🔍 Query Analysis")
@@ -820,7 +879,31 @@ def show_positions_trades(positions):
     ]
     
     # Display filtered positions
-    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+    selection = st.dataframe(
+        filtered_df, width="stretch", hide_index=True,
+        on_select="rerun", selection_mode="single-row", key="active_positions_table"
+    )
+
+    rows = selection.selection.rows
+    if rows:
+        selected_ticker = str(filtered_df.iloc[rows[0]]["Market ID"])
+        st.subheader(f"Trade details — {selected_ticker}")
+        st.caption("Individual fills executed for this market (not just current holdings).")
+        try:
+            selected_fills = load_fills(selected_ticker)
+            render_fills_table(selected_fills, "export_selected_fills")
+        except Exception as exc:
+            st.error(f"Could not load fills: {exc}")
+
+    st.subheader("📥 Trade History Export")
+    st.caption("Export all account fills, including closed positions. Uses API pagination.")
+    if st.button("Load complete trade history", key="load_full_history"):
+        st.session_state["show_full_history"] = True
+    if st.session_state.get("show_full_history", False):
+        try:
+            render_fills_table(load_fills(), "export_all_fills")
+        except Exception as exc:
+            st.error(f"Could not load trade history: {exc}")
     
     # Position analytics
     if not filtered_df.empty:
@@ -839,7 +922,7 @@ def show_positions_trades(positions):
                 names=strategy_values.index,
                 title="Position Value by Strategy"
             )
-            st.plotly_chart(fig_strategy, use_container_width=True)
+            st.plotly_chart(fig_strategy, width="stretch")
         
         with col2:
             # Side distribution
@@ -851,7 +934,7 @@ def show_positions_trades(positions):
                 title="Positions by Side",
                 labels={'x': 'Side', 'y': 'Count'}
             )
-            st.plotly_chart(fig_sides, use_container_width=True)
+            st.plotly_chart(fig_sides, width="stretch")
 
 def show_risk_management(performance_data, positions, system_balance):
     """Show risk management dashboard."""
@@ -970,7 +1053,7 @@ def show_risk_management(performance_data, positions, system_balance):
                     }
                     for strategy, data in strategy_risk.items()
                 ])
-                st.dataframe(strategy_df, use_container_width=True, hide_index=True)
+                st.dataframe(strategy_df, width="stretch", hide_index=True)
         
     except Exception as e:
         st.error(f"Error calculating risk metrics: {e}")

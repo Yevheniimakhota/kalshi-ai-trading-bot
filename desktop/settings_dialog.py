@@ -1,239 +1,227 @@
-from PySide6.QtWidgets import (
-    QDialog,
-    QFormLayout,
-    QHBoxLayout,
-    QLabel,
-    QLineEdit,
-    QMessageBox,
-    QPushButton,
-    QVBoxLayout,
-    QFileDialog
-)
-
 
 from pathlib import Path
-import shutil
 
-from desktop.config_manager import ConfigManager
+from PySide6.QtWidgets import (
+    QDialog,
+    QVBoxLayout,
+    QHBoxLayout,
+    QFormLayout,
+    QTabWidget,
+    QWidget,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QFileDialog,
+    QMessageBox,
+    QFrame
+)
+
+from desktop.styles import SETTINGS_STYLE
+
 
 
 class SettingsDialog(QDialog):
-    def __init__(
-        self,
-        config_manager: ConfigManager,
-        parent=None,
-    ):
+    def __init__(self, config_manager, parent=None):
         super().__init__(parent)
 
         self.config_manager = config_manager
+        self.selected_files = {}
 
-        self.setWindowTitle(
-            "Configuration"
-        )
-
-        self.setMinimumWidth(500)
-
+        self.setWindowTitle("Kalshi API Settings")
+        self.resize(660, 440)
+        self.setMinimumSize(650, 420)
+        self.setStyleSheet(SETTINGS_STYLE)
         self._build_ui()
-        self._load_existing_values()
+        self._load_settings()
 
     def _build_ui(self):
+
+        
         layout = QVBoxLayout(self)
+        header = QLabel("Kalshi API Settings")
+        header.setStyleSheet("""
+            font-size: 19px;
+            font-weight: 700;
+            color: #111827;
+        """)
 
-        title = QLabel(
-            "API Configuration"
+        layout.addWidget(header)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(18)
+        separator = QFrame()
+        separator.setObjectName("separator")
+        separator.setFrameShape(QFrame.HLine)
+
+        layout.addWidget(separator)
+        self.tabs = QTabWidget()
+        self.tabs.setDocumentMode(True)
+        self.tabs.tabBar().setExpanding(True)
+        self.environment_fields = {}
+
+        for environment, title in (
+            ("demo", "Demo Account"),
+            ("prod", "Production Account"),
+        ):
+            page = QWidget()
+            form = QFormLayout(page)
+
+            api_input = QLineEdit()
+            api_input.setEchoMode(QLineEdit.Password)
+            api_input.setPlaceholderText("Enter Kalshi API Key ID")
+            api_input.setMinimumHeight(42)
+
+            key_status = QLabel("Not configured")
+
+            browse_button = QPushButton(
+                "Import private key (.pem)"
+            )
+            browse_button.setMinimumHeight(40)
+            browse_button.clicked.connect(
+                lambda checked=False, env=environment:
+                    self._browse_private_key(env)
+            )
+
+            form.addRow("Kalshi API Key:", api_input)
+            form.addRow("Private key:", key_status)
+            form.addRow("", browse_button)
+
+            self.environment_fields[environment] = {
+                "api_input": api_input,
+                "key_status": key_status,
+            }
+
+            self.tabs.addTab(page, title)
+
+        layout.addWidget(self.tabs)
+
+        shared_label = QLabel(
+            "OpenRouter API Key (shared)"
         )
+        layout.addWidget(shared_label)
 
-        font = title.font()
-        font.setPointSize(16)
-        font.setBold(True)
+        self.openrouter_input = QLineEdit()
+        self.openrouter_input.setMinimumHeight(42)
 
-        title.setFont(font)
-
-        layout.addWidget(title)
-
-        form = QFormLayout()
-
-        # Kalshi
-        self.kalshi_key_input = QLineEdit()
-
-        self.kalshi_key_input.setEchoMode(
+        self.openrouter_input.setEchoMode(
             QLineEdit.Password
         )
-
-        self.kalshi_key_input.setPlaceholderText(
-            "Kalshi API Key"
+        self.openrouter_input.setPlaceholderText(
+            "Enter OpenRouter API Key"
         )
+        layout.addWidget(self.openrouter_input)
 
-        form.addRow(
-            "Kalshi API Key:",
-            self.kalshi_key_input,
-        )
-
-        # OpenRouter
-        self.openrouter_key_input = QLineEdit()
-
-        self.openrouter_key_input.setEchoMode(
-            QLineEdit.Password
-        )
-
-        self.openrouter_key_input.setPlaceholderText(
-            "OpenRouter API Key"
-        )
-
-        form.addRow(
-            "OpenRouter API Key:",
-            self.openrouter_key_input,
-        )
-
-        layout.addLayout(form)
-
-        self.private_key_input = QLineEdit()
-        self.private_key_input.setReadOnly(True)
-        self.private_key_input.setPlaceholderText(
-            "No private key selected"
-        )
-
-        self.private_key_button = QPushButton(
-            "Select .pem"
-        )
-
-        private_key_layout = QHBoxLayout()
-
-        private_key_layout.addWidget(
-            self.private_key_input
-        )
-
-        private_key_layout.addWidget(
-            self.private_key_button
-        )
-
-        form.addRow(
-            "Kalshi Private Key:",
-            private_key_layout,
-        )
-
-        self.private_key_button.clicked.connect(
-            self._select_private_key
-        )
-
-        
-        
-        # Buttons
         buttons = QHBoxLayout()
 
-        self.save_button = QPushButton(
-            "Save"
-        )
+        save_button = QPushButton("Save Settings")
+        save_button.setObjectName("saveButton")
+        cancel_button = QPushButton("Cancel")
+        cancel_button.setObjectName("cancelButton")
 
-        self.cancel_button = QPushButton(
-            "Cancel"
-        )
+        save_button.clicked.connect(self._save_settings)
+        cancel_button.clicked.connect(self.reject)
 
-        buttons.addStretch()
-
-        buttons.addWidget(
-            self.save_button
-        )
-
-        buttons.addWidget(
-            self.cancel_button
-        )
+        buttons.addWidget(save_button)
+        buttons.addWidget(cancel_button)
 
         layout.addLayout(buttons)
 
-        self.save_button.clicked.connect(
-            self._save
+    def _load_settings(self):
+        for environment, fields in (
+            self.environment_fields.items()
+        ):
+            api_key = (
+                self.config_manager.get_kalshi_api_key(
+                    environment
+                )
+            )
+
+            if api_key:
+                fields["api_input"].setText(api_key)
+
+            private_key = (
+                self.config_manager.get_private_key_path(
+                    environment
+                )
+            )
+
+            if private_key:
+                fields["key_status"].setText(
+                    "✓ Private key configured"
+                )
+
+        openrouter_key = (
+            self.config_manager.get_openrouter_api_key()
         )
 
-        self.cancel_button.clicked.connect(
-            self.reject
-        )
+        if openrouter_key:
+            self.openrouter_input.setText(
+                openrouter_key
+            )
 
-    def _select_private_key(self):
-        file_path, _ = QFileDialog.getOpenFileName(
+    def _browse_private_key(self, environment):
+        path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Kalshi Private Key",
             "",
-            "PEM files (*.pem);;All files (*)",
+            "PEM Files (*.pem)",
         )
 
-        if not file_path:
+        if not path:
             return
 
+        self.selected_files[environment] = path
+
+        self.environment_fields[
+            environment
+        ]["key_status"].setText(
+            f"Selected: {Path(path).name}"
+        )
+
+    def _save_settings(self):
         try:
-            saved_path = (
-                self.config_manager
-                .import_private_key(file_path)
+            for environment, fields in (
+                self.environment_fields.items()
+            ):
+                api_key = (
+                    fields["api_input"].text().strip()
+                )
+
+                if api_key:
+                    self.config_manager.set_kalshi_api_key(
+                        api_key,
+                        environment,
+                    )
+
+                selected_file = self.selected_files.get(
+                    environment
+                )
+
+                if selected_file:
+                    self.config_manager.import_private_key(
+                        selected_file,
+                        environment,
+                    )
+
+            openrouter_key = (
+                self.openrouter_input.text().strip()
             )
 
-            self.private_key_input.setText(
-                str(saved_path)
+            if openrouter_key:
+                self.config_manager.set_openrouter_api_key(
+                    openrouter_key
+                )
+
+            QMessageBox.information(
+                self,
+                "Settings Saved",
+                "Credentials saved successfully.",
             )
+
+            self.accept()
 
         except Exception as exc:
             QMessageBox.critical(
                 self,
-                "Private Key Error",
+                "Settings Error",
                 str(exc),
             )
-
-    def _load_existing_values(self):
-        kalshi_key = (
-            self.config_manager
-            .get_kalshi_api_key()
-        )
-
-        openrouter_key = (
-            self.config_manager
-            .get_openrouter_api_key()
-        )
-        private_key_path = (
-            self.config_manager
-            .get_private_key_path()
-        )
-
-        if private_key_path:
-            self.private_key_input.setText(
-                str(private_key_path)
-            )
-
-        if kalshi_key:
-            self.kalshi_key_input.setText(
-                kalshi_key
-            )
-
-        if openrouter_key:
-            self.openrouter_key_input.setText(
-                openrouter_key
-            )
-
-    def _save(self):
-        kalshi_key = (
-            self.kalshi_key_input
-            .text()
-            .strip()
-        )
-
-        openrouter_key = (
-            self.openrouter_key_input
-            .text()
-            .strip()
-        )
-
-        if kalshi_key:
-            self.config_manager.set_kalshi_api_key(
-                kalshi_key
-            )
-
-        if openrouter_key:
-            self.config_manager.set_openrouter_api_key(
-                openrouter_key
-            )
-
-        QMessageBox.information(
-            self,
-            "Saved",
-            "Configuration saved successfully.",
-        )
-
-        self.accept()

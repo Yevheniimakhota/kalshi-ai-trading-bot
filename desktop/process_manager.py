@@ -50,34 +50,23 @@ class ProcessManager(QObject):
             )
             return False
 
-        project_root = (
-            Path(__file__)
-            .resolve()
-            .parent
-            .parent
-        )
-
-        cli_path = project_root / "cli.py"
-
-        self.process.setWorkingDirectory(
-            str(project_root)
-        )
-
+        project_root = Path(__file__).resolve().parent.parent
+        frozen = getattr(sys, "frozen", False)
         program = sys.executable
-
-        process_arguments = [
-            str(cli_path),
-            *arguments,
-        ]
-
-        self.output_received.emit(
-            f"$ {program} {cli_path.name} "
-            + " ".join(arguments)
-        )
+        if frozen:
+            args = ["--internal-cli", *arguments]
+            working_dir = Path(sys.executable).resolve().parent
+        else:
+            args = [str(project_root / "cli.py"), *arguments]
+            working_dir = project_root
+        self.process.setWorkingDirectory(str(working_dir))
+        self.output_received.emit(f"$ {program} " + " ".join(args))
+        
         process_env = (
             QProcessEnvironment.systemEnvironment()
         )
-
+        process_env.insert("PYTHONUTF8", "1")
+        process_env.insert("PYTHONIOENCODING", "utf-8")
         if environment:
             for key, value in environment.items():
                 if value:
@@ -89,10 +78,7 @@ class ProcessManager(QObject):
         self.process.setProcessEnvironment(
             process_env
 )
-        self.process.start(
-            program,
-            process_arguments,
-        )
+        self.process.start(program, args)
 
         return True
 

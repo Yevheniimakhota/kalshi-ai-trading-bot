@@ -13,6 +13,18 @@ KALSHI_API_KEY = "kalshi_api_key"
 OPENROUTER_API_KEY = "openrouter_api_key"
 
 
+VALID_ENVIRONMENTS = {"demo", "prod"}
+
+
+def validate_environment(environment: str) -> str:
+    if environment not in VALID_ENVIRONMENTS:
+        raise ValueError(
+            f"Unsupported Kalshi environment: {environment}"
+        )
+    return environment
+
+
+
 
 class ConfigManager:
     def __init__(self):
@@ -38,20 +50,22 @@ class ConfigManager:
     # Secret credentials
     # -------------------------
 
-    def set_kalshi_api_key(
-        self,
-        value: str,
-    ):
+    def set_kalshi_api_key(self,value: str, environment: str,):
+        environment = validate_environment(environment)
+
         keyring.set_password(
             SERVICE_NAME,
-            KALSHI_API_KEY,
+            f"kalshi_api_key_{environment}",
             value,
         )
 
-    def get_kalshi_api_key(self) -> str | None:
+
+    def get_kalshi_api_key(self,environment: str,) -> str | None:
+        environment = validate_environment(environment)
+
         return keyring.get_password(
             SERVICE_NAME,
-            KALSHI_API_KEY,
+            f"kalshi_api_key_{environment}",
         )
 
     def set_openrouter_api_key(
@@ -72,38 +86,40 @@ class ConfigManager:
             OPENROUTER_API_KEY,
         )
 
-    def import_private_key( self,source_path: str | Path,) -> Path:
-        source = Path(source_path)
+    def import_private_key(self,source_path: str | Path,environment: str,) -> Path:
+        environment = validate_environment(environment)
+        source = Path(source_path).resolve()
 
-        if not source.exists():
+        if not source.is_file():
             raise FileNotFoundError(
                 f"Private key not found: {source}"
             )
 
-        if not source.is_file():
-            raise ValueError(
-                "Selected private key is not a file."
-            )
-
         if source.suffix.lower() != ".pem":
-            raise ValueError(
-                "Kalshi private key must be a .pem file."
-            )
+            raise ValueError("Private key must be a .pem file.")
 
-        shutil.copy2(
-            source,
-            self.private_key_path,
+        destination = (
+            self.data_dir /
+            f"kalshi_private_key_{environment}.pem"
+        ).resolve()
+
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+
+        if source != destination:
+            shutil.copy2(source, destination)
+
+        return destination
+
+
+    def get_private_key_path( self, environment: str,  ) -> Path | None:
+        environment = validate_environment(environment)
+
+        path = (
+            self.data_dir /
+            f"kalshi_private_key_{environment}.pem"
         )
 
-        return self.private_key_path
-
-
-    def get_private_key_path(self,) -> Path | None:
-
-        if self.private_key_path.exists():
-            return self.private_key_path
-
-        return None
+        return path if path.is_file() else None
 
     # -------------------------
     # Normal application config
