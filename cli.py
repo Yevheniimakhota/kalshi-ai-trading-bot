@@ -43,8 +43,10 @@ def cmd_run(args: argparse.Namespace) -> None:
     live_mode = live and not paper
 
     if live_mode:
-        print("⚠️  WARNING: LIVE TRADING MODE ENABLED")
-        print("   This will use real money and place actual trades.")
+        if os.getenv('KALSHI_ENV','').lower() == 'demo':
+            print('🧪 DEMO API TRADING: orders use test funds')
+        else:
+            print('⚠️  WARNING: PRODUCTION API TRADING ENABLED — real funds at risk')
 
     # --safe-compounder mode: edge-based NO-side only
     if safe_compounder:
@@ -1497,6 +1499,19 @@ def cmd_health(args: argparse.Namespace) -> None:
 # Argument parser
 # ---------------------------------------------------------------------------
 
+
+def cmd_reconcile_demo(args: argparse.Namespace) -> None:
+    """Read-only comparison of Kalshi Demo positions and local SQLite."""
+    import json
+    from src.jobs.reconcile_demo import generate_report, save_report
+    report = asyncio.run(generate_report())
+    path = save_report(report, getattr(args, "output", None))
+    print(json.dumps(report, indent=2, ensure_ascii=False))
+    print(f"\nReport saved: {path}")
+    if report["unparsed_positions"]:
+        print("WARNING: Some API position formats could not be interpreted. Manual review required.")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="kalshi-bot",
@@ -1903,6 +1918,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip the interactive 'CLOSE ALL' confirmation (dangerous)",
     )
     p_close.set_defaults(func=cmd_close_all)
+
+    p_reconcile = subparsers.add_parser(
+        "reconcile-demo",
+        help="Read-only reconciliation of Demo exchange positions and local SQLite",
+    )
+    p_reconcile.add_argument("--output", help="Optional JSON report destination")
+    p_reconcile.set_defaults(func=cmd_reconcile_demo)
 
     return parser
 

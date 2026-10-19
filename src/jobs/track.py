@@ -68,12 +68,8 @@ async def should_exit_position(
     if position.take_profit_price:
         take_profit_triggered = False
         
-        if position.side == "YES":
-            # For YES positions, take profit when price rises above target
-            take_profit_triggered = current_price >= position.take_profit_price
-        else:
-            # For NO positions, take profit when price falls below target
-            take_profit_triggered = current_price <= position.take_profit_price
+        # Both owned YES and owned NO contracts profit as their own price rises.
+        take_profit_triggered = current_price >= position.take_profit_price
             
         if take_profit_triggered:
             return True, "take_profit", current_price
@@ -139,6 +135,8 @@ async def run_tracking(db_manager: Optional[DatabaseManager] = None):
         db_manager = DatabaseManager()
         await db_manager.initialize()
 
+    # Original monitoring restored; execution remains constrained by execute.py.
+    # A submitted SELL is never proof of closing a position.
     kalshi_client = KalshiClient()
 
     try:
@@ -179,6 +177,10 @@ async def run_tracking(db_manager: Optional[DatabaseManager] = None):
         exit_sell_failures = 0       # exits we tried to execute but couldn't place a sell
         for position in open_positions:
             try:
+                if (not position.strategy or position.strategy == 'exchange_unmanaged'
+                        or position.entry_price is None or position.entry_price <= 0):
+                    logger.info(f'Unmanaged position {position.market_id}: visible in Dashboard, auto-exit disabled')
+                    continue
                 # Get current market data
                 market_response = await kalshi_client.get_market(position.market_id)
                 market_data = market_response.get('market', {})
@@ -259,35 +261,10 @@ async def run_tracking(db_manager: Optional[DatabaseManager] = None):
                             continue
                         exit_sell_orders_placed += 1
 
-                    # Calculate PnL
-                    pnl = (exit_price - position.entry_price) * position.quantity
-
-                    # Create trade log
-                    trade_log = TradeLog(
-                        market_id=position.market_id,
-                        side=position.side,
-                        entry_price=position.entry_price,
-                        exit_price=exit_price,
-                        quantity=position.quantity,
-                        pnl=pnl,
-                        entry_timestamp=position.timestamp,
-                        exit_timestamp=datetime.now(),
-                        rationale=f"{position.rationale} | EXIT: {exit_reason}"
-                    )
-
-                    # Record the exit. For non-resolution exits the sell order
-                    # may still be resting unfilled — the local DB now optimistically
-                    # treats it as closed, which mirrors the existing behavior of
-                    # place_profit_taking_orders / place_stop_loss_orders.
-                    await db_manager.add_trade_log(trade_log)
-                    await db_manager.update_position_status(position.id, 'closed')
-
-                    if is_resolution:
-                        resolution_exits += 1
-                    logger.info(
-                        f"Position for market {position.market_id} closed via {exit_reason}. "
-                        f"PnL: ${pnl:.2f}"
-                    )
+                    # Never close or credit P&L from order acceptance or market status alone.
+                    # Exchange fills/settlement must be independently reconciled.
+                    logger.warning(f'Exit signal {exit_reason} on {position.market_id}: awaiting exchange-confirmed fill/settlement; DB unchanged')
+                    continue
                 else:
                     # Log current position status for monitoring
                     current_price = current_yes_price if position.side == "YES" else current_no_price

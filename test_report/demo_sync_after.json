@@ -1,0 +1,390 @@
+{
+  "generated_at_utc": "2026-10-16T10:28:27.101396+00:00",
+  "type": "LOCAL_READONLY_SQLITE",
+  "exchange_api_checked": false,
+  "warning": "OPEN in DB does not independently prove exchange inventory",
+  "positions": [
+    {
+      "id": 3,
+      "market_id": "KXGREENLAND-29-27",
+      "side": "NO",
+      "quantity": 11,
+      "entry_price": 0.0,
+      "live": 1,
+      "status": "closed",
+      "strategy": "exchange_unmanaged",
+      "stop_loss_price": null,
+      "take_profit_price": null,
+      "max_hold_hours": null
+    },
+    {
+      "id": 4,
+      "market_id": "KXGREENTERRITORY-29-27",
+      "side": "NO",
+      "quantity": 2.15,
+      "entry_price": 0.0,
+      "live": 1,
+      "status": "closed",
+      "strategy": "exchange_unmanaged",
+      "stop_loss_price": null,
+      "take_profit_price": null,
+      "max_hold_hours": null
+    },
+    {
+      "id": 5,
+      "market_id": "KXLOL-WORLDS26-GEN",
+      "side": "YES",
+      "quantity": 29.81,
+      "entry_price": 0.0,
+      "live": 1,
+      "status": "closed",
+      "strategy": "exchange_unmanaged",
+      "stop_loss_price": null,
+      "take_profit_price": null,
+      "max_hold_hours": null
+    },
+    {
+      "id": 14,
+      "market_id": "KXPRESNOMD-28-AKLO",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "pending",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 8,
+      "market_id": "KXPRESNOMD-28-BOBA",
+      "side": "NO",
+      "quantity": 3,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 7,
+      "market_id": "KXPRESNOMD-28-BS",
+      "side": "NO",
+      "quantity": 3,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 11,
+      "market_id": "KXPRESNOMD-28-CBOO",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 15,
+      "market_id": "KXPRESNOMD-28-ESLO",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "pending",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 10,
+      "market_id": "KXPRESNOMD-28-EWAR",
+      "side": "NO",
+      "quantity": 3.01,
+      "entry_price": 0.0,
+      "live": 1,
+      "status": "open",
+      "strategy": "exchange_unmanaged",
+      "stop_loss_price": null,
+      "take_profit_price": null,
+      "max_hold_hours": null
+    },
+    {
+      "id": 9,
+      "market_id": "KXPRESNOMD-28-GPLA",
+      "side": "NO",
+      "quantity": 3,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 16,
+      "market_id": "KXPRESNOMD-28-GW",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "pending",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 6,
+      "market_id": "KXPRESNOMD-28-HBID",
+      "side": "NO",
+      "quantity": 3,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 18,
+      "market_id": "KXPRESNOMD-28-HCLI",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "pending",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 13,
+      "market_id": "KXPRESNOMD-28-JSTE",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 20,
+      "market_id": "KXPRESNOMD-28-MK",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.964,
+      "live": 1,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.91,
+      "take_profit_price": 0.99,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 19,
+      "market_id": "KXPRESNOMD-28-MO",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.983,
+      "live": 1,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.92,
+      "take_profit_price": 0.99,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 21,
+      "market_id": "KXPRESNOMD-28-RC",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "pending",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 17,
+      "market_id": "KXPRESNOMD-28-RW",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.972,
+      "live": 1,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.91,
+      "take_profit_price": 0.99,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 12,
+      "market_id": "KXPRESNOMD-28-SAS",
+      "side": "NO",
+      "quantity": 2,
+      "entry_price": 0.5,
+      "live": 0,
+      "status": "open",
+      "strategy": "portfolio_optimization",
+      "stop_loss_price": 0.47,
+      "take_profit_price": 0.65,
+      "max_hold_hours": 72
+    },
+    {
+      "id": 2,
+      "market_id": "KXTVSEASONRELEASETHELASTOFUS-27-APR",
+      "side": "NO",
+      "quantity": 1,
+      "entry_price": 0.0,
+      "live": 1,
+      "status": "closed",
+      "strategy": "exchange_unmanaged",
+      "stop_loss_price": null,
+      "take_profit_price": null,
+      "max_hold_hours": null
+    },
+    {
+      "id": 1,
+      "market_id": "KXTVSEASONRELEASETHELASTOFUS-27-JAN",
+      "side": "YES",
+      "quantity": 17,
+      "entry_price": 0.0,
+      "live": 1,
+      "status": "closed",
+      "strategy": "exchange_unmanaged",
+      "stop_loss_price": null,
+      "take_profit_price": null,
+      "max_hold_hours": null
+    }
+  ],
+  "archive": [
+    {
+      "position_id": 20,
+      "archived_at": "2026-10-16T09:25:10.407190+00:00",
+      "reason": "Exchange inventory cannot be attributed to a verified bot BUY",
+      "previous_state": {
+        "market_id": "KXPRESNOMD-28-MK",
+        "side": "NO",
+        "status": "pending",
+        "live": 0,
+        "strategy": "portfolio_optimization",
+        "entry_price": 0.5,
+        "stop_loss_price": 0.47,
+        "take_profit_price": 0.65
+      }
+    },
+    {
+      "position_id": 19,
+      "archived_at": "2026-10-16T09:25:10.407190+00:00",
+      "reason": "Exchange inventory cannot be attributed to a verified bot BUY",
+      "previous_state": {
+        "market_id": "KXPRESNOMD-28-MO",
+        "side": "NO",
+        "status": "pending",
+        "live": 0,
+        "strategy": "portfolio_optimization",
+        "entry_price": 0.5,
+        "stop_loss_price": 0.47,
+        "take_profit_price": 0.65
+      }
+    },
+    {
+      "position_id": 17,
+      "archived_at": "2026-10-16T09:11:52.548214+00:00",
+      "reason": "Exchange inventory cannot be attributed to a verified bot BUY",
+      "previous_state": {
+        "market_id": "KXPRESNOMD-28-RW",
+        "side": "NO",
+        "status": "pending",
+        "live": 0,
+        "strategy": "portfolio_optimization",
+        "entry_price": 0.5,
+        "stop_loss_price": 0.47,
+        "take_profit_price": 0.65
+      }
+    },
+    {
+      "position_id": 10,
+      "archived_at": "2026-10-16T09:09:24.743471+00:00",
+      "reason": "Exchange inventory cannot be attributed to a verified bot BUY",
+      "previous_state": {
+        "market_id": "KXPRESNOMD-28-EWAR",
+        "side": "NO",
+        "status": "open",
+        "live": 0,
+        "strategy": "portfolio_optimization",
+        "entry_price": 0.5,
+        "stop_loss_price": 0.47,
+        "take_profit_price": 0.65
+      }
+    }
+  ],
+  "bot_order_intents": [
+    {
+      "intent_key": "original_strategy_position_20",
+      "ticker": "KXPRESNOMD-28-MK",
+      "side": "NO",
+      "count": "2",
+      "price_cents": 97,
+      "state": "ACKNOWLEDGED",
+      "order_id": "01a14407-9108-75ff-b760-47eee0adadb4"
+    },
+    {
+      "intent_key": "original_strategy_position_19",
+      "ticker": "KXPRESNOMD-28-MO",
+      "side": "NO",
+      "count": "2",
+      "price_cents": 99,
+      "state": "ACKNOWLEDGED",
+      "order_id": "01a14407-7d80-72bb-9038-2fee8f3b9c3d"
+    },
+    {
+      "intent_key": "original_strategy_position_17",
+      "ticker": "KXPRESNOMD-28-RW",
+      "side": "NO",
+      "count": "2",
+      "price_cents": 98,
+      "state": "ACKNOWLEDGED",
+      "order_id": "01a143fa-6dc0-74e4-bf93-b110dd85e22f"
+    },
+    {
+      "intent_key": "original_strategy_position_10",
+      "ticker": "KXPRESNOMD-28-EWAR",
+      "side": "NO",
+      "count": "2",
+      "price_cents": 97,
+      "state": "ACKNOWLEDGED",
+      "order_id": "01a143c7-4418-7189-b289-2ada2e7ba6c3"
+    },
+    {
+      "intent_key": "original_strategy_position_9",
+      "ticker": "KXPRESNOMD-28-GPLA",
+      "side": "NO",
+      "count": "3",
+      "price_cents": 99,
+      "state": "ACKNOWLEDGED",
+      "order_id": "01a143b6-b9b8-7925-b22d-83ae8d056ba6"
+    }
+  ]
+}

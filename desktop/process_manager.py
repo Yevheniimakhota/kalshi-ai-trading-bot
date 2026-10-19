@@ -66,6 +66,10 @@ class ProcessManager(QObject):
             QProcessEnvironment.systemEnvironment()
         )
         process_env.insert("PYTHONUTF8", "1")
+        # Resolve data independently of executable working directory.
+        from desktop.paths import get_trading_db_path
+        env_name = (environment or {}).get("KALSHI_ENV", "prod")
+        process_env.insert("KALSHI_TRADING_DB_PATH", str(get_trading_db_path(env_name)))
         process_env.insert("PYTHONIOENCODING", "utf-8")
         if environment:
             for key, value in environment.items():

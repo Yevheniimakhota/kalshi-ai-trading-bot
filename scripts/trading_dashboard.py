@@ -1,564 +1,338 @@
 #!/usr/bin/env python3
-"""
-Comprehensive Trading System Dashboard
+"""Kalshi Dashboard (original sidebar layout, 30s auto-refresh, read-only).
 
-A Streamlit-based dashboard for monitoring and analyzing all aspects of the 
-trading system including:
-- Strategy performance analytics
-- LLM query analysis and review
-- Real-time position tracking
-- Risk management monitoring
-- System health metrics
-- P&L analytics by strategy
+Restores the original user-facing layout, charts, LLM analytics and full-history
+CSV export. No trading routes; Demo BUY/SELL and strategy jobs are untouched.
+Exchange metrics are never replaced by local paper/accounting estimates.
 """
-from decimal import Decimal
-
-import streamlit as st
 import asyncio
+import os
+import sqlite3
+from contextlib import closing
+from datetime import datetime, timezone, timedelta
+from decimal import Decimal
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import sys
-import os
-from datetime import datetime, timedelta, timezone
-import json
+import streamlit as st
 
-# Add parent directory to path for imports
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from src.utils.database import DatabaseManager
 from src.clients.kalshi_client import KalshiClient
+from src.jobs.reconcile_demo import fetch_all
+from src.utils.database import DatabaseManager
+from src.utils.exchange_dashboard_accounting import summarize_market_positions
+from src.utils.market_prices import get_market_prices
 from desktop.runtime_state import read_runtime_state
+from desktop.paths import get_user_data_dir, get_trading_db_path
 
+st.set_page_config(page_title='Trading System Dashboard', page_icon='📊',
+                   layout='wide', initial_sidebar_state='expanded')
 
-# Configure Streamlit page
-st.set_page_config(
-    page_title="Trading System Dashboard",
-    page_icon="📊",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# Custom CSS for better styling
 st.markdown("""
 <style>
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
-    }
-    
-    .success-metric {
-        background-color: #d4edda;
-        border-left: 4px solid #28a745;
-    }
-    
-    .warning-metric {
-        background-color: #fff3cd;
-        border-left: 4px solid #ffc107;
-    }
-    
-    .danger-metric {
-        background-color: #f8d7da;
-        border-left: 4px solid #dc3545;
-    }
-    
-    .llm-query {
-        background-color: #f8f9fa;
-        border: 1px solid #dee2e6;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin: 0.5rem 0;
-    }
+.metric-card {background-color:#f0f2f6;padding:1rem;border-radius:0.5rem;margin:0.5rem 0}
+.success-metric {background-color:#d4edda;border-left:4px solid #28a745}
+.warning-metric {background-color:#fff3cd;border-left:4px solid #ffc107}
+.danger-metric {background-color:#f8d7da;border-left:4px solid #dc3545}
+.llm-query {background-color:#f8f9fa;border:1px solid #dee2e6;border-radius:.5rem;padding:1rem;margin:.5rem 0}
 </style>
 """, unsafe_allow_html=True)
 
-# @st.cache_data(ttl=60)  # Cache for 1 minute - temporarily disabled
-def load_performance_data():
-    """Load performance data from database."""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        db_manager = DatabaseManager()
-        kalshi_client = KalshiClient()
-        
-        async def get_data():
-            await db_manager.initialize()
-            
-            # Get performance by strategy - ensure it's serializable
-            performance_raw = await db_manager.get_performance_by_strategy()
-            
-            # Convert performance data to ensure serializability
-            performance = {}
-            if performance_raw:
-                for strategy, stats in performance_raw.items():
-                    performance[str(strategy)] = {
-                        str(k): float(v) if isinstance(v, (int, float)) else str(v) 
-                        for k, v in stats.items()
-                    }
-            
-            # Get LIVE positions from Kalshi API (not just database)
-            positions_response = await kalshi_client.get_positions()
-            kalshi_positions = positions_response.get("market_positions", [])
+REFRESH_SECONDS = 30
 
-            positions = []
 
-            for pos in kalshi_positions:
-                position_fp = Decimal(str(
-                    pos.get("position_fp", pos.get("position", 0))
-                ))
+def _price(value):
+    return 'Unavailable' if value is None else f'${value:,.2f}'
 
-                if position_fp == 0:
+
+def _number(value):
+    if value is None:
+        return None
+    result = Decimal(str(value))
+    if not result.is_finite():
+        raise ValueError('Invalid Kalshi numeric field')
+    return result
+
+
+def _arrow_safe(dataframe):
+    """Avoid PyArrow mixed object-type Value column errors on Windows.
+
+    Only convert object columns with heterogeneous Python element types;
+    preserve numeric columns for Streamlit sorting and formatting.
+    """
+    df = dataframe.copy()
+    for col in df.columns:
+        if pd.api.types.is_object_dtype(df[col].dtype):
+            types = {type(x) for x in df[col].dropna()}
+            if len(types) > 1:
+                df[col] = df[col].map(lambda v: '' if v is None else str(v)).astype('string')
+    return df
+
+
+def _table(rows, *, key=None):
+    frame = pd.DataFrame(rows)
+    if not frame.empty:
+        st.dataframe(_arrow_safe(frame), hide_index=True, width='stretch', key=key)
+    return frame
+
+
+@st.cache_data(ttl=25, show_spinner=False)
+def load_exchange():
+    """Exchange-authoritative account snapshot, all paginated fills/orders."""
+    async def read():
+        async with KalshiClient() as client:
+            balance = await client.get_balance()
+            positions = await fetch_all(client, '/trade-api/v2/portfolio/positions', 'market_positions')
+            orders = await fetch_all(client, '/trade-api/v2/portfolio/orders', 'orders', {'status':'resting'})
+            fills = await fetch_all(client, '/trade-api/v2/portfolio/fills', 'fills')
+            # Only compute bid estimates from real, valid bid quotes.
+            bids = {}
+            for p in positions:
+                qty = _number(p.get('position_fp', p.get('position', '0')))
+                if not qty:
                     continue
-
-                ticker = pos.get("ticker", "")
-                exposure = Decimal(str(
-                    pos.get("market_exposure_dollars", 0)
-                ))
-
-                positions.append({
-                    "market_id": ticker,
-                    "side": "YES" if position_fp > 0 else "NO",
-                    "quantity": float(abs(position_fp)),
-                    "entry_price": (
-                        float(exposure / abs(position_fp))
-                        if position_fp != 0 else 0.0
-                    ),
-                    "timestamp": pos.get(
-                        "last_updated_ts",
-                        datetime.now().isoformat()
-                    ),
-                    "strategy": "Kalshi API",
-                    "status": "open",
-                    "stop_loss_price": None,
-                    "take_profit_price": None,
-                })
-            
-            await db_manager.close()
-            
-            return performance, positions
-        
-        performance, positions = loop.run_until_complete(get_data())
-        loop.close()
-        
-        return performance, positions
-        
-    except Exception as e:
-        st.error(f"Error loading performance data: {e}")
-        return {}, []
-
-# @st.cache_data(ttl=30)  # Cache for 30 seconds - temporarily disabled
-def load_llm_data():
-    """Load LLM query data from database."""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        db_manager = DatabaseManager()
-        
-        async def get_data():
-            await db_manager.initialize()
-            
-            # Get recent LLM queries
-            queries = await db_manager.get_llm_queries(hours_back=24, limit=100)
-            
-            # Get LLM stats by strategy with improved token calculation
-            stats = await db_manager.get_llm_stats_by_strategy()
-            
-            # Fix token count issues by recalculating from response lengths if needed
-            for strategy, strategy_stats in stats.items():
-                if strategy_stats.get('total_tokens', 0) == 0:
-                    # Recalculate tokens from query responses for this strategy
-                    strategy_queries = [q for q in queries if q.strategy == strategy]
-                    estimated_tokens = 0
-                    for query in strategy_queries:
-                        # Estimate tokens: ~4 characters per token
-                        prompt_tokens = len(query.prompt) // 4 if query.prompt else 0
-                        response_tokens = len(query.response) // 4 if query.response else 0
-                        estimated_tokens += prompt_tokens + response_tokens
-                    
-                    strategy_stats['total_tokens'] = estimated_tokens
-                    strategy_stats['estimated'] = True
-            
-            await db_manager.close()
-            
-            return queries, stats
-        
-        queries, stats = loop.run_until_complete(get_data())
-        loop.close()
-        
-        return queries, stats
-        
-    except Exception as e:
-        st.error(f"Error loading LLM data: {e}")
-        return [], {}
-
-@st.cache_data(ttl=30)  # Refresh portfolio metrics within 30 seconds
-def load_system_health():
-    """Load system health metrics including both available cash and total portfolio value."""
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        
-        kalshi_client = KalshiClient()
-        
-        async def get_health():
-            # Get available cash
-            balance_response = await kalshi_client.get_balance()
-            available_cash = balance_response.get('balance', 0) / 100
-            
-            # Get current positions to calculate total portfolio value
-            positions_response = await kalshi_client.get_positions()
-            market_positions = positions_response.get('market_positions', [])
-            
-            total_position_value = 0
-            positions_count = len(market_positions)
-            
-            # Calculate current value of all positions
-            for position in market_positions:
                 try:
-                    ticker = position.get('ticker')
-                    position_count = float(position.get("position_fp", position.get("position", 0)))
-                    
-                    if ticker and position_count != 0:
-                        # Get current market data
-                        market_data = await kalshi_client.get_market(ticker)
-                        if market_data and 'market' in market_data:
-                            market_info = market_data['market']
-                            
-                            # Determine if this is a YES or NO position and get current price
-                            # For Kalshi, positive position = YES, negative = NO
-                            if position_count > 0:  # YES position
-                                current_price = (market_info.get('yes_bid', 0) + market_info.get('yes_ask', 100)) / 2 / 100
-                            else:  # NO position  
-                                current_price = (market_info.get('no_bid', 0) + market_info.get('no_ask', 100)) / 2 / 100
-                            
-                            position_value = abs(position_count) * current_price
-                            total_position_value += position_value
-                            
-                except Exception as e:
-                    # If we can't get market data for a position, skip it
-                    print(f"Warning: Could not value position {ticker}: {e}")
+                    market = (await client.get_market(p['ticker'])).get('market', {})
+                    yes_bid, _, no_bid, _ = get_market_prices(market)
+                    bid = yes_bid if qty > 0 else no_bid
+                    if 0 < bid < 1:
+                        bids[(p['ticker'], 'YES' if qty > 0 else 'NO')] = str(bid)
+                except Exception:
+                    # Do NOT claim zero bid or zero P&L if a market quote is missing.
                     continue
-            
-            # Total portfolio value = cash + position values
-            total_portfolio_value = available_cash + total_position_value
-            
-            return available_cash, total_portfolio_value, positions_count, total_position_value
-        
-        available_cash, total_portfolio_value, positions_count, position_value = loop.run_until_complete(get_health())
-        loop.close()
-        
-        return {
-            'available_cash': available_cash,
-            'total_portfolio_value': total_portfolio_value, 
-            'positions_count': positions_count,
-            'position_value': position_value
-        }
-        
-    except Exception as e:
-        st.error(f"Error loading system health: {e}")
-        return {
-            'available_cash': 0.0,
-            'total_portfolio_value': 0.0,
-            'positions_count': 0,
-            'position_value': 0.0
-        }
+            return balance, positions, orders, fills, bids
+    return asyncio.run(read())
+
 
 @st.cache_data(ttl=30, show_spinner=False)
-def load_fills(ticker=None):
-    """Load ALL account fills with cursor pagination. No trading actions."""
-    async def fetch():
-        async with KalshiClient() as client:
-            result = []
-            cursor = None
-            seen = set()
-            while True:
-                params = {"limit": 200}
-                if ticker:
-                    params["ticker"] = ticker
-                if cursor:
-                    params["cursor"] = cursor
-                response = await client._make_authenticated_request(
-                    "GET", "/trade-api/v2/portfolio/fills", params=params
-                )
-                result.extend(response.get("fills", []))
-                cursor = response.get("cursor")
-                if not cursor or cursor in seen:
-                    break
-                seen.add(cursor)
-            return result
-
-    return asyncio.run(fetch())
+def load_strategy_data():
+    """Existing database-based strategy analytics, distinct from account P&L."""
+    async def read():
+        db = DatabaseManager()
+        await db.initialize()
+        try:
+            return await db.get_performance_by_strategy()
+        finally:
+            await db.close()
+    return asyncio.run(read())
 
 
-def render_fills_table(fills, key):
-    if not fills:
-        st.info("No fills found for this selection.")
+@st.cache_data(ttl=30, show_spinner=False)
+def load_llm_data():
+    async def read():
+        db = DatabaseManager()
+        await db.initialize()
+        try:
+            queries = await db.get_llm_queries(hours_back=24, limit=100)
+            stats = await db.get_llm_stats_by_strategy()
+            for strategy, values in stats.items():
+                if not values.get('total_tokens'):
+                    related = [q for q in queries if q.strategy == strategy]
+                    values['total_tokens'] = sum(
+                        (len(q.prompt or '') + len(q.response or '')) // 4
+                        for q in related
+                    )
+                    values['estimated'] = True
+            return queries, stats
+        finally:
+            await db.close()
+    return asyncio.run(read())
+
+
+def bot_order_ids():
+    """Only label Bot when there is a matching durable order journal entry."""
+    path = get_trading_db_path().with_name('demo_submission_intents.sqlite3')
+    if not path.is_file():
+        return set()
+    try:
+        with closing(sqlite3.connect(f'file:{path.as_posix()}?mode=ro', uri=True)) as db:
+            return {row[0] for row in db.execute(
+                'SELECT order_id FROM submission_intents WHERE order_id IS NOT NULL')}
+    except sqlite3.Error:
+        return set()
+
+
+def _csv(rows, filename, label, key):
+    """Export raw, deduplicated exchange fills, independent of active positions."""
+    if not rows:
+        st.info('No trade records to export.')
         return
-
-    df = pd.json_normalize(fills)
-
-    # Remove duplicate fills, if any
-    if "fill_id" in df.columns:
-        df = df.drop_duplicates(subset=["fill_id"])
-
-    csv_data = df.to_csv(index=False).encode("utf-8-sig")
-
-    st.success(f"Loaded {len(df)} trade records")
-    st.dataframe(df, width="stretch", hide_index=True)
-
-    filename = (
-        f"{key}_{len(df)}_trades_"
-        f"{datetime.now(timezone.utc):%Y%m%d_%H%M%S}.csv"
-    )
-
-    st.download_button(
-        label=f"⬇ Export {len(df)} trades (CSV)",
-        data=csv_data,
-        file_name=filename,
-        mime="text/csv",
-        key=key,
-        on_click="ignore",
-    )
-
-    st.caption(
-        f"CSV contains {len(df)} trade records. "
-        "Raw fills, not a calculated tax report."
-    )
-
-#LIVE REFRESH 30 seconds
-@st.fragment(run_every="30s")
-def render_live_dashboard(page):
-    """Refresh live sections without resetting sidebar or other controls."""
-    state_path = os.environ.get("KALSHI_RUNTIME_STATE_PATH", "")
-    runtime = read_runtime_state(state_path) if state_path else {}
-    running = bool(runtime.get("running", False))
-    status_col, env_col, mode_col, strategy_col = st.columns(4)
-    status_col.metric("Bot status", "Running" if running else "Stopped")
-    env_col.metric("Kalshi environment", str(runtime.get("environment", "Unknown")).upper())
-    mode_col.metric("Trading mode", str(runtime.get("mode", "Unknown")))
-    strategy_col.metric("Strategy", str(runtime.get("strategy", "Unknown")))
-
-    performance_data, positions = load_performance_data()
-    llm_queries, llm_stats = load_llm_data()
-    system_health_data = load_system_health()
-
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("**📊 Data Status:**")
-    st.sidebar.metric("Active Positions", len(positions))
-    st.sidebar.metric("LLM Queries (24h)", len(llm_queries))
-    st.sidebar.metric("Portfolio Balance", f"${system_health_data.get('total_portfolio_value', 0):.2f}")
-
-    if page == "📈 Overview":
-        show_overview(performance_data, positions, system_health_data)
-    elif page == "🎯 Strategy Performance":
-        show_strategy_performance(performance_data)
-    elif page == "🤖 LLM Analysis":
-        show_llm_analysis(llm_queries, llm_stats)
-    elif page == "💼 Positions & Trades":
-        show_positions_trades(positions)
-    elif page == "⚠️ Risk Management":
-        show_risk_management(performance_data, positions, system_health_data['total_portfolio_value'])
-    elif page == "🔧 System Health":
-        show_system_health(system_health_data['available_cash'], system_health_data['positions_count'], llm_stats)
+    df = pd.json_normalize(rows)
+    if 'fill_id' in df.columns:
+        df = df.drop_duplicates(subset=['fill_id'])
+    st.download_button(label, data=df.to_csv(index=False).encode('utf-8-sig'),
+                       file_name=filename, mime='text/csv', key=key, on_click='ignore')
 
 
-def main():
-    """Main dashboard function."""
-    
-    st.title("🚀 Trading System Dashboard")
-    st.markdown("**Real-time monitoring and analysis of your automated trading system**")
-    if st.button("🔄 Refresh Data", help="Clear cache and reload all data"):
-        st.cache_data.clear()
-        st.rerun()
-    #st.caption("Automatic refresh: every 60 seconds. Manual refresh is also available.")
-    st.sidebar.title("📊 Dashboard")
-    page = st.sidebar.selectbox("Select View", [
-        "📈 Overview", "🎯 Strategy Performance", "🤖 LLM Analysis",
-        "💼 Positions & Trades", "⚠️ Risk Management", "🔧 System Health"
-    ])
-    render_live_dashboard(page)
+def _account_numbers(balance):
+    cash = _number(balance['balance']) / 100 if 'balance' in balance else None
+    portfolio = _number(balance['portfolio_value']) / 100 if 'portfolio_value' in balance else None
+    total = cash + portfolio if cash is not None and portfolio is not None else None
+    return cash, portfolio, total
 
 
-def show_overview(performance_data, positions, system_health_data):
-    """Show overview dashboard."""
-    
-    st.header("📈 System Overview")
-    
-    # Key metrics row
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric(
-            label="💰 Portfolio Balance",
-            value=f"${system_health_data['total_portfolio_value']:.2f}",
-            help="Total portfolio value: cash + current positions"
-        )
-    
-    # Add second row for additional financial metrics
-    col1b, col2b, col3b, col4b = st.columns(4)
-    
-    with col1b:
-        st.metric(
-            label="💵 Available Cash",
-            value=f"${system_health_data['available_cash']:.2f}",
-            help="Cash available for new trades"
-        )
-    
-    with col2b:
-        st.metric(
-            label="📊 Position Value",
-            value=f"${system_health_data['position_value']:.2f}",
-            help="Current market value of all positions"
-        )
-    
-    with col2:
-        total_trades = sum(stats.get('completed_trades', 0) for stats in performance_data.values()) if performance_data else 0
-        st.metric(
-            label="📈 Total Trades",
-            value=total_trades,
-            help="Total completed trades across all strategies"
-        )
-    
-    with col3:
-        # Calculate both realized and unrealized P&L
-        realized_pnl = sum(stats.get('total_pnl', 0) for stats in performance_data.values()) if performance_data else 0
-        
-        # Calculate unrealized P&L from current positions
-        unrealized_pnl = 0
-        if positions:
-            # This is a rough estimate - in practice you'd get current market prices
-            for pos in positions:
-                # Position is now a dictionary
-                if 'entry_price' in pos and 'quantity' in pos:
-                    # Estimate current value vs entry value
-                    # For demo purposes, we'll use a simple calculation
-                    position_value = pos['entry_price'] * pos['quantity']
-                    # Assume current value is similar to entry (this would be calculated with live prices)
-                    unrealized_pnl += 0  # Placeholder - would need current market prices
-        
-        total_pnl = realized_pnl + unrealized_pnl
-        
-        st.metric(
-            label="💹 Total P&L",
-            value=f"${total_pnl:.2f}",
-            delta=f"Realized: ${realized_pnl:.2f}, Unrealized: ${unrealized_pnl:.2f}",
-            help="Total profit/loss: realized from completed trades + unrealized from open positions"
-        )
-    
-    with col4:
-        st.metric(
-            label="🎯 Active Positions",
-            value=len(positions) if positions else 0,
-            help="Currently open positions"
-        )
-    
-    with col3b:
-        # Portfolio utilization
-        if system_health_data['total_portfolio_value'] > 0:
-            utilization_pct = (system_health_data['position_value'] / system_health_data['total_portfolio_value']) * 100
-        else:
-            utilization_pct = 0
-        st.metric(
-            label="📊 Portfolio Utilization",
-            value=f"{utilization_pct:.1f}%",
-            help="Percentage of portfolio currently in positions"
-        )
-    
-    with col4b:
-        # Cash utilization  
-        if system_health_data['available_cash'] > 0:
-            initial_cash = system_health_data['total_portfolio_value']  # Approximation
-            cash_used_pct = ((initial_cash - system_health_data['available_cash']) / initial_cash) * 100 if initial_cash > 0 else 0
-        else:
-            cash_used_pct = 100
-        st.metric(
-            label="💸 Cash Deployed",
-            value=f"{min(100, max(0, cash_used_pct)):.1f}%", 
-            help="Percentage of original cash now in positions"
-        )
-    
-    # Strategy performance summary
-    if performance_data:
-        st.subheader("🎯 Strategy Performance Summary")
-        
-        # Create strategy performance chart
-        strategy_names = []
-        strategy_pnl = []
-        strategy_trades = []
-        strategy_win_rates = []
-        
-        for strategy, stats in performance_data.items():
-            strategy_names.append(strategy.replace('_', ' ').title())
-            strategy_pnl.append(stats.get('total_pnl', 0))
-            strategy_trades.append(stats.get('completed_trades', 0))
-            strategy_win_rates.append(stats.get('win_rate_pct', 0))
-        
-        col1, col2 = st.columns(2)
-        
+def show_overview(balance, report, orders, fills, performance):
+    """Original-style overview + graphs with exchange-verified finance metrics."""
+    st.header('📈 System Overview')
+    cash, portfolio, total = _account_numbers(balance)
+    a,b,c,d = st.columns(4)
+    a.metric('💰 Portfolio Balance', _price(total))
+    b.metric('📈 Executed Fills', len({str(f.get('fill_id')) for f in fills if f.get('fill_id')}))
+    c.metric('💹 Realized P&L (Kalshi markets)', _price(report['realized']))
+    d.metric('🎯 Active Positions', report['position_count'])
+    e,f,g,h = st.columns(4)
+    e.metric('💵 Available Cash', _price(cash))
+    f.metric('📊 Position Value', _price(portfolio))
+    g.metric('📈 Unrealized P&L (bid estimate)', _price(report['unrealized_estimate']))
+    h.metric('📋 Open Orders', len(orders))
+    st.caption('Realized P&L is Kalshi market_positions.realized_pnl_dollars for returned markets; '
+               'not a verified lifetime/settled account figure. Unrealized P&L is a bid estimate '
+               'and stays Unavailable when quotes or basis are missing. Trading fees on future exits '
+               'are not included.')
+    if performance:
+        st.subheader('🎯 Strategy Performance Summary (local DB)')
+        st.caption('Local strategy statistics may omit manually executed trades and unconfirmed fills.')
+        names = [str(name).replace('_',' ').title() for name in performance]
+        pnl = [float(performance[name].get('total_pnl') or 0) for name in performance]
+        wins = [float(performance[name].get('win_rate_pct') or 0) for name in performance]
+        col1,col2 = st.columns(2)
         with col1:
-            # P&L by strategy
-            fig_pnl = px.bar(
-                x=strategy_names,
-                y=strategy_pnl,
-                title="P&L by Strategy",
-                labels={'x': 'Strategy', 'y': 'P&L ($)'},
-                color=strategy_pnl,
-                color_continuous_scale='RdYlGn'
-            )
-            fig_pnl.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_pnl, width="stretch")
-        
+            fig = px.bar(x=names,y=pnl,title='P&L by Strategy (DB)',
+                         labels={'x':'Strategy','y':'P&L ($)'}, color=pnl,
+                         color_continuous_scale='RdYlGn')
+            fig.update_layout(showlegend=False,height=400)
+            st.plotly_chart(fig,width='stretch')
         with col2:
-            # Win rate by strategy
-            fig_winrate = px.bar(
-                x=strategy_names,
-                y=strategy_win_rates,
-                title="Win Rate by Strategy (%)",
-                labels={'x': 'Strategy', 'y': 'Win Rate (%)'},
-                color=strategy_win_rates,
-                color_continuous_scale='Blues'
-            )
-            fig_winrate.update_layout(showlegend=False, height=400)
-            st.plotly_chart(fig_winrate, width="stretch")
+            fig = px.bar(x=names,y=wins,title='Win Rate by Strategy (DB)',
+                         labels={'x':'Strategy','y':'Win Rate (%)'},color=wins,
+                         color_continuous_scale='Blues')
+            fig.update_layout(showlegend=False,height=400)
+            st.plotly_chart(fig,width='stretch')
+    st.subheader('📋 Recent Exchange Positions')
+    if report['positions']:
+        _table(report['positions'])
     else:
-        st.info("📊 **No strategy data yet** - Run the trading system to start collecting performance data")
-    
-    # Recent activity summary
-    st.subheader("📋 Recent Activity")
-    
+        st.info('No active exchange positions.')
+
+
+def show_positions_trades(report, fills):
+    """Restored sidebar positions, filters, selectable rows and full CSV export."""
+    st.header('💼 Positions & Trades')
+    positions = report['positions']
+    st.subheader(f'📊 Active Positions ({len(positions)})')
     if positions:
-        st.write(f"**{len(positions)} active positions:**")
-        
-        # Show top positions by value
-        position_data = []
-        for pos in positions[:10]:  # Top 10
-            # Convert timestamp string back to datetime for display
-            try:
-                timestamp = datetime.fromisoformat(pos['timestamp'])
-                time_str = timestamp.strftime('%m/%d %H:%M')
-            except:
-                time_str = 'Unknown'
-            
-            position_data.append({
-                'Market': pos['market_id'][:25] + '...' if len(pos['market_id']) > 25 else pos['market_id'],
-                'Side': pos['side'],
-                'Quantity': pos['quantity'],
-                'Entry Price': f"${pos['entry_price']:.3f}",
-                'Value': f"${pos['quantity'] * pos['entry_price']:.2f}",
-                'Strategy': pos['strategy'] or 'Unknown',
-                'Time': time_str
-            })
-        
-        if position_data:
-            df = pd.DataFrame(position_data)
-            st.dataframe(df, width="stretch", hide_index=True)
+        df = pd.DataFrame(positions)
+        a,b = st.columns(2)
+        with a:
+            options = sorted(df['Side'].dropna().unique().tolist())
+            sides = st.multiselect('Filter by Side', options, default=options)
+        with b:
+            ticker_text = st.text_input('Search ticker', placeholder='Market ticker')
+        filtered = df[df['Side'].isin(sides)]
+        if ticker_text:
+            filtered = filtered[filtered['Ticker'].astype(str).str.contains(ticker_text,case=False,regex=False)]
+        selection = st.dataframe(_arrow_safe(filtered.reset_index(drop=True)), hide_index=True,
+                                 width='stretch',on_select='rerun',selection_mode='single-row',
+                                 key='active_positions_table')
+        selected = selection.selection.rows
+        if selected:
+            selected_ticker = str(filtered.iloc[selected[0]]['Ticker'])
+            st.subheader(f'Trade details — {selected_ticker}')
+            selected_fills = [f for f in fills if f.get('ticker') == selected_ticker]
+            if selected_fills:
+                df_sel = pd.json_normalize(selected_fills)
+                if 'fill_id' in df_sel.columns:
+                    df_sel = df_sel.drop_duplicates(subset='fill_id')
+                st.dataframe(_arrow_safe(df_sel), hide_index=True,width='stretch')
+                _csv(selected_fills,'kalshi_'+selected_ticker+'_fills.csv',
+                     '⬇ Export selected market fills (CSV)', 'export_selected_fills')
+            else:
+                st.info('No fills returned for this market.')
+        if not filtered.empty:
+            st.subheader('📈 Position Analytics')
+            col1,col2 = st.columns(2)
+            with col1:
+                fig = px.pie(names=filtered['Side'].tolist(),
+                             title='Position Distribution', values=[1]*len(filtered))
+                st.plotly_chart(fig,width='stretch')
+            with col2:
+                fig = px.bar(x=filtered['Ticker'].tolist(),
+                             y=[float(Decimal(str(n))) for n in filtered['Contracts']],
+                             labels={'x':'Market','y':'Contracts'}, title='Contracts by Market')
+                st.plotly_chart(fig,width='stretch')
     else:
-        st.info("No active positions currently.")
+        st.info('No active exchange positions.')
+    st.subheader('📥 Trade History Export')
+    st.caption('Export all fills, including closed positions and manual trades. Data is fetched '
+               'from Kalshi API, not only local SQLite.')
+    if st.button('Load complete trade history',key='load_full_history'):
+        st.session_state['show_full_history'] = True
+    if st.session_state.get('show_full_history'):
+        show_trade_history(fills, embedded=True)
+
+
+def show_open_orders(orders, tracked):
+    st.header('📋 Open Orders (Kalshi)')
+    st.caption('Exchange resting orders, including partially filled and manual orders.')
+    if not orders:
+        st.info('No resting orders reported by Kalshi.')
+        return
+    keys=['order_id','ticker','side','action','status','type',
+          'initial_count_fp','remaining_count_fp','fill_count_fp',
+          'yes_price_dollars','no_price_dollars','created_time']
+    rows=[]
+    for o in orders:
+        row={key:o.get(key) for key in keys}
+        row['Origin']='Bot' if o.get('order_id') in tracked else 'External / unknown'
+        rows.append(row)
+    st.metric('Resting orders',len(rows))
+    _table(rows)
+    _csv(rows, 'kalshi_open_orders.csv', '⬇ Export open orders (CSV)', 'export_open_orders')
+
+
+def show_trade_history(fills, embedded=False):
+    if not embedded:
+        st.header('📥 Trade History')
+    st.caption('All available paginated exchange fills: includes Bot and External / unknown orders.')
+    if not fills:
+        st.info('No fills returned by Kalshi.')
+        return
+    tracked=bot_order_ids()
+    rows=[];seen=set()
+    for f in sorted(fills,key=lambda x:str(x.get('created_time','')),reverse=True):
+        fid = f.get('fill_id')
+        if fid and fid in seen:
+            continue
+        if fid:
+            seen.add(fid)
+        record=dict(f)
+        record['Origin']='Bot' if f.get('order_id') in tracked else 'External / unknown'
+        rows.append(record)
+    st.metric('Executed fills',len(rows))
+    _table(rows)
+    _csv(rows,'kalshi_all_trades_'+datetime.now(timezone.utc).strftime('%Y%m%d')+'.csv',
+         f'⬇ Export {len(rows)} trades (CSV)','export_all_fills_'+('embed' if embedded else 'page'))
+    st.caption('Raw fills, not a tax statement or verified lifetime P&L.')
+
+
+def show_bot_activity():
+    st.header('📝 Bot Activity')
+    path=Path.cwd()/'logs'/'latest.log'
+    if not path.is_file():
+        st.info('No recent bot log found.')
+        return
+    with path.open('rb') as f:
+        f.seek(0,2)
+        f.seek(max(0,f.tell()-250_000))
+        lines=f.read().decode('utf-8',errors='replace').splitlines()
+    keys=('SUBMITTED','FILLED','BLOCKED','ERROR','WARNING','Trading Cycle',
+          'position','SELL','BUY','sync:','STOP','TAKE')
+    events=[line for line in lines if any(k.lower() in line.lower() for k in keys)]
+    st.code('\n'.join(events[-80:]) or 'No trading events yet',language='text')
 
 def show_strategy_performance(performance_data):
     """Show detailed strategy performance analysis."""
@@ -586,11 +360,11 @@ def show_strategy_performance(performance_data):
             comparison_data.append({
                 'Strategy': strategy.replace('_', ' ').title(),
                 'Completed Trades': stats['completed_trades'],
-                'Total P&L': f"${stats['total_pnl']:.2f}",
+                'Local DB P&L': f"${stats['total_pnl']:.2f}",
                 'Avg P&L per Trade': f"${stats['avg_pnl_per_trade']:.2f}",
                 'Win Rate': f"{stats['win_rate_pct']:.1f}%",
-                'Best Trade': f"${stats['best_trade']:.2f}",
-                'Worst Trade': f"${stats['worst_trade']:.2f}",
+                'Best Trade': f"${(stats.get('best_trade') or 0):.2f}",
+                'Worst Trade': f"${(stats.get('worst_trade') or 0):.2f}",
                 'Open Positions': stats['open_positions'],
                 'Capital Deployed': f"${stats['capital_deployed']:.2f}"
             })
@@ -650,7 +424,7 @@ def show_strategy_performance(performance_data):
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            st.metric("Total P&L", f"${stats['total_pnl']:.2f}")
+            st.metric("Local DB P&L", f"${stats['total_pnl']:.2f}")
         with col2:
             st.metric("Win Rate", f"{stats['win_rate_pct']:.1f}%")
         with col3:
@@ -667,8 +441,8 @@ def show_strategy_performance(performance_data):
             with col1:
                 st.write("**Trade Performance:**")
                 st.write(f"- Average P&L per Trade: ${stats['avg_pnl_per_trade']:.2f}")
-                st.write(f"- Best Trade: ${stats['best_trade']:.2f}")
-                st.write(f"- Worst Trade: ${stats['worst_trade']:.2f}")
+                st.write(f"- Best Trade: ${(stats.get('best_trade') or 0):.2f}")
+                st.write(f"- Worst Trade: ${(stats.get('worst_trade') or 0):.2f}")
                 st.write(f"- Winning Trades: {stats['winning_trades']}")
                 st.write(f"- Losing Trades: {stats['losing_trades']}")
             
@@ -816,339 +590,84 @@ def show_llm_analysis(llm_queries, llm_stats):
     else:
         st.info("No LLM queries found for the selected filters.")
 
-def show_positions_trades(positions):
-    """Show detailed positions and trades analysis."""
-    
-    st.header("💼 Positions & Trades")
-    
-    if not positions:
-        st.warning("No active positions found.")
-        return
-    
-    # Positions overview
-    st.subheader(f"📊 Active Positions ({len(positions)})")
-    
-    # Create positions DataFrame
-    position_data = []
-    for pos in positions:
-        # Convert timestamp string back to datetime for display
-        try:
-            timestamp = datetime.fromisoformat(pos['timestamp'])
-            time_str = timestamp.strftime('%m/%d %H:%M')
-        except:
-            time_str = 'Unknown'
-        
-        position_data.append({
-            'Market ID': pos['market_id'],
-            'Strategy': pos['strategy'] or 'Unknown',
-            'Side': pos['side'],
-            'Quantity': pos['quantity'],
-            'Entry Price': f"${pos['entry_price']:.3f}",
-            'Position Value': f"${pos['quantity'] * pos['entry_price']:.2f}",
-            'Entry Time': time_str,
-            'Status': pos['status'],
-            'Stop Loss': f"${pos['stop_loss_price']:.3f}" if pos['stop_loss_price'] else "None",
-            'Take Profit': f"${pos['take_profit_price']:.3f}" if pos['take_profit_price'] else "None"
-        })
-    
-    df_positions = pd.DataFrame(position_data)
-    
-    # Positions filters
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        strategies = df_positions['Strategy'].unique().tolist()
-        selected_strategies = st.multiselect(
-            "Filter by Strategy",
-            strategies,
-            default=strategies
-        )
-    
-    with col2:
-        sides = df_positions['Side'].unique().tolist()
-        selected_sides = st.multiselect(
-            "Filter by Side",
-            sides,
-            default=sides
-        )
-    
-    # Apply filters
-    filtered_df = df_positions[
-        (df_positions['Strategy'].isin(selected_strategies)) &
-        (df_positions['Side'].isin(selected_sides))
-    ]
-    
-    # Display filtered positions
-    selection = st.dataframe(
-        filtered_df, width="stretch", hide_index=True,
-        on_select="rerun", selection_mode="single-row", key="active_positions_table"
-    )
 
-    rows = selection.selection.rows
-    if rows:
-        selected_ticker = str(filtered_df.iloc[rows[0]]["Market ID"])
-        st.subheader(f"Trade details — {selected_ticker}")
-        st.caption("Individual fills executed for this market (not just current holdings).")
-        try:
-            selected_fills = load_fills(selected_ticker)
-            render_fills_table(selected_fills, "export_selected_fills")
-        except Exception as exc:
-            st.error(f"Could not load fills: {exc}")
+#LIVE REFRESH 30 seconds, as in the original version.
+@st.fragment(run_every='30s')
+def render_live_dashboard(page):
+    runtime=read_runtime_state(get_user_data_dir()/'runtime_state.json')
+    running=bool(runtime.get('running'))
+    env=str(runtime.get('environment') or os.getenv('KALSHI_ENV') or 'Unknown').upper()
+    status_col,env_col,mode_col,strategy_col = st.columns(4)
+    status_col.metric('Bot status','Running' if running else 'Stopped')
+    env_col.metric('Kalshi environment',env)
+    mode_col.metric('Trading mode',str(runtime.get('mode','Unknown')))
+    strategy_col.metric('Strategy',str(runtime.get('strategy','Unknown')))
 
-    st.subheader("📥 Trade History Export")
-    st.caption("Export all account fills, including closed positions. Uses API pagination.")
-    if st.button("Load complete trade history", key="load_full_history"):
-        st.session_state["show_full_history"] = True
-    if st.session_state.get("show_full_history", False):
-        try:
-            render_fills_table(load_fills(), "export_all_fills")
-        except Exception as exc:
-            st.error(f"Could not load trade history: {exc}")
-    
-    # Position analytics
-    if not filtered_df.empty:
-        st.subheader("📈 Position Analytics")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Value by strategy
-            strategy_values = filtered_df.groupby('Strategy')['Position Value'].apply(
-                lambda x: x.str.replace('$', '').astype(float).sum()
-            )
-            
-            fig_strategy = px.pie(
-                values=strategy_values.values,
-                names=strategy_values.index,
-                title="Position Value by Strategy"
-            )
-            st.plotly_chart(fig_strategy, width="stretch")
-        
-        with col2:
-            # Side distribution
-            side_counts = filtered_df['Side'].value_counts()
-            
-            fig_sides = px.bar(
-                x=side_counts.index,
-                y=side_counts.values,
-                title="Positions by Side",
-                labels={'x': 'Side', 'y': 'Count'}
-            )
-            st.plotly_chart(fig_sides, width="stretch")
-
-def show_risk_management(performance_data, positions, system_balance):
-    """Show risk management dashboard."""
-    
-    st.header("⚠️ Risk Management")
-    
-    # Handle empty positions gracefully
-    if not positions:
-        st.info("No active positions to analyze for risk management.")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Portfolio Utilization", "0.0%")
-        with col2:
-            st.metric("Total Deployed", "$0.00")
-        with col3:
-            st.metric("Avg Position Size", "$0.00")
-        with col4:
-            st.metric("Max Single Position", "0.0%")
-        
-        st.subheader("🚨 Risk Alerts")
-        st.success("✅ All risk metrics within acceptable ranges")
-        return
-    
-    # Calculate risk metrics from live positions
     try:
-        total_deployed = sum(pos['quantity'] * pos['entry_price'] for pos in positions if 'quantity' in pos and 'entry_price' in pos)
-        portfolio_utilization = (total_deployed / system_balance * 100) if system_balance > 0 else 0
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric(
-                "Portfolio Utilization",
-                f"{portfolio_utilization:.1f}%",
-                help="Percentage of balance deployed in positions"
-            )
-        
-        with col2:
-            st.metric(
-                "Total Deployed",
-                f"${total_deployed:.2f}",
-                help="Total capital in active positions"
-            )
-        
-        with col3:
-            avg_position_size = total_deployed / len(positions) if positions else 0
-            st.metric(
-                "Avg Position Size",
-                f"${avg_position_size:.2f}",
-                help="Average size per position"
-            )
-        
-        with col4:
-            # Calculate max single position risk
-            position_values = [pos['quantity'] * pos['entry_price'] for pos in positions if 'quantity' in pos and 'entry_price' in pos]
-            max_position = max(position_values) if position_values else 0
-            max_risk_pct = (max_position / system_balance * 100) if system_balance > 0 else 0
-            st.metric(
-                "Max Single Position",
-                f"{max_risk_pct:.1f}%",
-                help="Largest position as % of portfolio"
-            )
-        
-        # Risk alerts
-        st.subheader("🚨 Risk Alerts")
-        
-        alerts = []
-        
-        if portfolio_utilization > 90:
-            alerts.append("⚠️ **High Portfolio Utilization**: Over 90% of capital deployed")
-        
-        if max_risk_pct > 20:
-            alerts.append("⚠️ **Large Position Risk**: Single position exceeds 20% of portfolio")
-        
-        if len(positions) > 50:
-            alerts.append("⚠️ **High Position Count**: Over 50 active positions may be difficult to manage")
-        
-        # Check for positions without stop losses (if supported)
-        no_stop_loss = []
-        for pos in positions:
-            if 'stop_loss_price' in pos and not pos['stop_loss_price']:
-                no_stop_loss.append(pos)
-        
-        if no_stop_loss:
-            alerts.append(f"⚠️ **No Stop Losses**: {len(no_stop_loss)} positions lack stop loss protection")
-        
-        if alerts:
-            for alert in alerts:
-                st.warning(alert)
-        else:
-            st.success("✅ All risk metrics within acceptable ranges")
-        
-        # Risk by strategy breakdown
-        strategy_names = [pos['strategy'] for pos in positions if 'strategy' in pos]
-        if len(set(strategy_names)) > 1:
-            st.subheader("📊 Risk by Strategy")
-            
-            strategy_risk = {}
-            for pos in positions:
-                if 'strategy' in pos and 'quantity' in pos and 'entry_price' in pos:
-                    strategy = pos['strategy'] or 'Unknown'
-                    if strategy not in strategy_risk:
-                        strategy_risk[strategy] = {'exposure': 0, 'positions': 0}
-                    strategy_risk[strategy]['exposure'] += pos['quantity'] * pos['entry_price']
-                    strategy_risk[strategy]['positions'] += 1
-            
-            if strategy_risk:
-                strategy_df = pd.DataFrame([
-                    {
-                        'Strategy': strategy,
-                        'Exposure': f"${data['exposure']:.2f}",
-                        'Positions': data['positions'],
-                        'Avg Size': f"${data['exposure'] / data['positions']:.2f}",
-                        'Portfolio %': f"{(data['exposure'] / system_balance * 100):.1f}%" if system_balance > 0 else "0.0%"
-                    }
-                    for strategy, data in strategy_risk.items()
-                ])
-                st.dataframe(strategy_df, width="stretch", hide_index=True)
-        
-    except Exception as e:
-        st.error(f"Error calculating risk metrics: {e}")
-        st.info("Using basic risk metrics")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Portfolio Utilization", "Error")
-        with col2:
-            st.metric("Total Deployed", "Error")
-        with col3:
-            st.metric("Avg Position Size", "Error")
-        with col4:
-            st.metric("Max Single Position", "Error")
+        balance,raw_positions,orders,fills,bids=load_exchange()
+        report=summarize_market_positions(raw_positions,bids)
+    except Exception as exc:
+        st.error(f'Kalshi exchange data unavailable: {exc}')
+        st.info('No missing values were replaced with zero. Verify Demo API connection.')
+        if page == '📝 Bot Activity':
+            show_bot_activity()
+        return
+    cash, portfolio, total=_account_numbers(balance)
+    st.sidebar.markdown('---')
+    st.sidebar.markdown('**📊 Data Status:**')
+    st.sidebar.metric('Active Positions',report['position_count'])
+    st.sidebar.metric('Open Orders',len(orders))
+    st.sidebar.metric('Portfolio Balance',_price(total))
+    st.sidebar.caption('Auto refresh: 30 seconds')
 
-def show_system_health(available_cash, positions_count, llm_stats):
-    """Show system health and monitoring."""
-    
-    st.header("🔧 System Health")
-    
-    # System status
-    st.subheader("🟢 System Status")
-    
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.success("✅ **Kalshi Connection**: Active")
-        st.write(f"Available Cash: ${available_cash:.2f}")
-        st.write(f"Positions: {positions_count}")
-    
-    with col2:
-        if llm_stats:
-            st.success("✅ **LLM Integration**: Active")
-            total_queries = sum(stats['query_count'] for stats in llm_stats.values())
-            st.write(f"Queries (7d): {total_queries}")
-        else:
-            st.warning("⚠️ **LLM Logging**: No data")
-    
-    with col3:
-        st.success("✅ **Database**: Connected")
-        st.write("All tables operational")
-    
-    # Recent activity timeline
-    st.subheader("📅 System Activity")
-    
-    if llm_stats:
-        st.write("**Recent LLM Activity:**")
-        for strategy, stats in llm_stats.items():
-            if stats['last_query']:
-                last_query_time = datetime.fromisoformat(stats['last_query'])
-                time_ago = datetime.now() - last_query_time
-                
-                if time_ago.days > 0:
-                    time_str = f"{time_ago.days} days ago"
-                elif time_ago.seconds > 3600:
-                    time_str = f"{time_ago.seconds // 3600} hours ago"
-                else:
-                    time_str = f"{time_ago.seconds // 60} minutes ago"
-                
-                st.write(f"- **{strategy}**: Last query {time_str}")
-    
-    # Configuration summary
-    st.subheader("⚙️ Configuration")
-    
-    config_info = {
-        "Database Path": "trading_system.db",
-        "Dashboard Refresh": "Auto (1 min cache)",
-        "LLM Logging": "Enabled" if llm_stats else "Pending first query",
-        "Strategy Tracking": "Enabled",
-        "Risk Management": "Active"
-    }
-    
-    for key, value in config_info.items():
-        st.write(f"**{key}:** {value}")
-    
-    # System recommendations
-    st.subheader("💡 Recommendations")
-    
-    recommendations = []
-    
-    if available_cash < 100:
-        recommendations.append("💰 Consider increasing account balance for more trading opportunities")
-    
-    if not llm_stats:
-        recommendations.append("🤖 LLM query logging will begin with next trading cycle")
-    
-    total_queries = sum(stats['query_count'] for stats in llm_stats.values()) if llm_stats else 0
-    if total_queries > 1000:
-        recommendations.append("📊 High LLM usage - consider optimizing query frequency")
-    
-    if recommendations:
-        for rec in recommendations:
-            st.info(rec)
-    else:
-        st.success("✅ System running optimally - no recommendations at this time")
+    if page == '📈 Overview':
+        try:
+            performance=load_strategy_data()
+        except Exception as exc:
+            st.warning(f'Local DB strategy history unavailable: {exc}')
+            performance={}
+        show_overview(balance,report,orders,fills,performance)
+    elif page == '🎯 Strategy Performance':
+        try:
+            performance=load_strategy_data()
+            st.caption('Based on local confirmed trade logs; distinct from Kalshi account P&L.')
+            show_strategy_performance(performance)
+        except Exception as exc:
+            st.error(f'Cannot load local strategy history: {exc}')
+    elif page == '🤖 LLM Analysis':
+        try:
+            queries, stats=load_llm_data()
+            show_llm_analysis(queries,stats)
+        except Exception as exc:
+            st.error(f'Cannot load LLM history: {exc}')
+    elif page == '💼 Positions & Trades':
+        show_positions_trades(report,fills)
+    elif page == '📋 Open Orders':
+        show_open_orders(orders,bot_order_ids())
+    elif page == '📥 Trade History':
+        show_trade_history(fills)
+    elif page == '📝 Bot Activity':
+        show_bot_activity()
 
-if __name__ == "__main__":
-    main() 
+
+def main():
+    st.title('🚀 Trading System Dashboard')
+    st.markdown('**Real-time monitoring and analysis of your automated trading system**')
+    if st.button('🔄 Refresh Data',help='Clear cached exchange and DB reads and reload'):
+        st.cache_data.clear()
+        st.rerun()
+    st.sidebar.title('📊 Dashboard')
+    page=st.sidebar.selectbox('Select View', [
+        '📈 Overview',
+        '🎯 Strategy Performance',
+        '🤖 LLM Analysis',
+        '💼 Positions & Trades',
+        '📋 Open Orders',
+        '📥 Trade History',
+        '📝 Bot Activity',
+    ])
+    render_live_dashboard(page)
+
+
+if __name__ == '__main__':
+    main()

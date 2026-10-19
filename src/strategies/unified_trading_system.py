@@ -247,7 +247,7 @@ class UnifiedAdvancedTradingSystem:
             # Step 1: Get ALL available markets (no time restrictions) - MORE PERMISSIVE VOLUME
             markets = await self.db_manager.get_eligible_markets(
             volume_min=200,  # DECREASED: Much lower volume requirement (was 50,000, now 200) for more opportunities
-            max_days_to_expiry=365  # Accept any timeline with dynamic exits
+            max_days_to_expiry=1825  # Accept any timeline with dynamic exits
         )
             if not markets:
                 self.logger.warning("No markets available for trading")
@@ -388,11 +388,13 @@ class UnifiedAdvancedTradingSystem:
             'positions_created': 0,
             'total_capital_used': 0.0,
             'successful_executions': 0,
+            'submitted_orders': 0,
             'failed_executions': 0
         }
         
         try:
-            from src.jobs.execute import execute_position
+            from src.jobs.execute import execute_position_result
+            import aiosqlite
             
             for market_id, allocation_fraction in allocation.allocations.items():
                 try:
@@ -407,11 +409,19 @@ class UnifiedAdvancedTradingSystem:
                     
                     # 🚨 ONLY SKIP if we already have a position on the EXACT same market_id AND side
                     existing_position = await self.db_manager.get_position_by_market_and_side(market_id, intended_side)
+                    if getattr(settings.trading, 'live_trading_enabled', False):
+                        async with aiosqlite.connect(self.db_manager.db_path) as guard_db:
+                            pending = await guard_db.execute(
+                                "SELECT 1 FROM positions WHERE market_id=? AND side=? AND status='pending' LIMIT 1",
+                                (market_id, intended_side))
+                            if await pending.fetchone():
+                                self.logger.info(f"Pending exchange order already recorded for {market_id} {intended_side}; skipping")
+                                continue
                     
                     if existing_position:
                         self.logger.info(f"⏭️ SKIPPING {market_id} {intended_side} - exact position already exists (likely from immediate trade)")
-                        results['positions_created'] += 1  # Count as created since it exists
-                        results['total_capital_used'] += allocation_fraction * self.directional_capital
+                        # Existing local row may only represent an unfilled order intent.
+                        # Do not claim new execution/capital usage without exchange fills.
                         continue
                     else:
                         # Check if we have the opposite side (just for logging)
@@ -526,7 +536,8 @@ class UnifiedAdvancedTradingSystem:
                         timestamp=datetime.now(),
                         rationale=f"Portfolio optimization allocation: {allocation_fraction:.1%} of capital. Edge: {opportunity.edge:.3f}, Confidence: {opportunity.confidence:.3f}, Stop: {exit_levels['stop_loss_pct']}%",
                         confidence=opportunity.confidence,
-                        live=False,  # Will be set to True after execution
+                        live=False,  # A Demo exchange intent is NOT a filled position.
+                        status='pending' if getattr(settings.trading, 'live_trading_enabled', False) else 'open',
                         strategy="portfolio_optimization",
                         
                         # Enhanced exit strategy using Grok4 recommendations
@@ -549,21 +560,32 @@ class UnifiedAdvancedTradingSystem:
                     live_mode = getattr(settings.trading, 'live_trading_enabled', False)
                     self.logger.info(f"🎛️ Trading mode check: live_mode={live_mode} for market {opportunity.market_id}")
                     
-                    success = await execute_position(
+                    execution = await execute_position_result(
                         position=position,
                         live_mode=live_mode,
                         db_manager=self.db_manager,
                         kalshi_client=self.kalshi_client
                     )
-                    
-                    if success:
+
+                    if execution.status == 'ACKNOWLEDGED_NOT_FILLED':
+                        results['submitted_orders'] += 1
+                        self.logger.info(
+                            f"📨 BUY SUBMITTED (NOT FILLED): {market_id} {intended_side} "
+                            f"requested={quantity}, order_id={execution.order_id}. "
+                            "Await exchange fills; no P&L or acquired inventory inferred."
+                        )
+                    elif execution.status == 'PAPER_SIMULATED':
                         results['successful_executions'] += 1
                         results['positions_created'] += 1
                         results['total_capital_used'] += position_value
-                        self.logger.info(f"✅ Executed position: {market_id} {intended_side} {quantity} at {price:.3f}")
+                        self.logger.info(f"📝 PAPER simulated: {market_id} {intended_side} {quantity} at {price:.3f}")
                     else:
                         results['failed_executions'] += 1
-                        self.logger.error(f"❌ Failed to execute position for {market_id}")
+                        self.logger.warning(
+                            f"⚠️ Order not confirmed as submitted: {market_id}, "
+                            f"status={execution.status}. "
+                            "If UNKNOWN, check durable intent and exchange before retry."
+                        )
                 
                 except Exception as e:
                     self.logger.error(f"Error executing allocation for {market_id}: {e}")

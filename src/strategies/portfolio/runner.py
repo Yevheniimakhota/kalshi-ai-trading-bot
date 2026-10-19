@@ -29,6 +29,7 @@ async def run_portfolio_optimization(
             volume_min=20000,  # Balanced volume for actual trading opportunities
             max_days_to_expiry=365  # Accept any timeline with dynamic exits
         )
+        logger.info(f"Portfolio eligibility: markets={len(markets)}, min_volume=20000, max_days_to_expiry=365")
         if not markets:
             logger.warning("No eligible markets for portfolio optimization")
             return optimizer._empty_allocation()

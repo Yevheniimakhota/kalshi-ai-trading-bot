@@ -1,0 +1,43 @@
+﻿
+logs\latest.log:10:2026-10-16 12:26:03,833 - trading_system.beast_mode_bot - INFO - [2m2026-10-16 12:26:03[0m [[32m
+[1minfo     [0m] [1m⚡ Features: Market Making + Portfolio Optimization + Dynamic Exits[0m [[34m[1mtrading_system.b
+east_mode_bot[0m] 
+logs\latest.log:19:2026-10-16 12:26:07,450 - trading_system.beast_mode_bot - INFO - [2m2026-10-16 12:26:07[0m [[32m
+[1minfo     [0m] [1mDemo startup position sync: {'added': 0, 'updated': 4, 'closed': 0, 'exchange_positions': 5, 'res
+ting_orders': 0, 'order_audit': 'ok', 'fills_audit': 'ok', 'replay_audit': 'failed: ValueError: Unreplayable fill: 0724
+3c82-ff69-9dac-1429-b873a2eab11e', 'cost_basis_audit': 'not_run', 'fee_completeness_audit': 'not_run', 'order_reservati
+on_audit': 'ok', 'exit_preflight_audit': 'ok', 'unmanaged_positions': 1, 'managed_positions': 3, 'waiting_for_fills': 0
+, 'restored_from_archive': 3, 'ownership_notes': [{'ticker': 'KXPRESNOMD-28-RW', 'side': 'NO', 'state': 'managed', 'rea
+son': 'Verified matching bot BUY fills; recovered archived strategy'}, {'ticker': 'KXPRESNOMD-28-MO', 'side': 'NO', 'st
+ate': 'managed', 'reason': 'Verified matching bot BUY fills; recovered archived strategy'}, {'ticker': 'KXPRESNOMD-28-M
+K', 'side': 'NO', 'state': 'managed', 'reason': 'Verified matching bot BUY fills; recovered archived strategy'}, {'tick
+er': 'KXPRESNOMD-28-EWAR', 'side': 'NO', 'state': 'unmanaged', 'reason': 'Manual or unrelated fills exist for this posi
+tion'}]}[0m [[34m[1mtrading_system.beast_mode_bot[0m] 
+logs\latest.log:150:2026-10-16 12:26:30,753 - trading_system.beast_mode_bot - INFO - [2m2026-10-16 12:26:30[0m [[32m
+[1minfo     [0m] [1mDemo periodic position sync: {'added': 0, 'updated': 4, 'closed': 0, 'exchange_positions': 5, 'r
+esting_orders': 0, 'order_audit': 'ok', 'fills_audit': 'ok', 'replay_audit': 'failed: ValueError: Unreplayable fill: 07
+243c82-ff69-9dac-1429-b873a2eab11e', 'cost_basis_audit': 'not_run', 'fee_completeness_audit': 'not_run', 'order_reserva
+tion_audit': 'ok', 'exit_preflight_audit': 'ok', 'unmanaged_positions': 1, 'managed_positions': 3, 'waiting_for_fills':
+ 0, 'restored_from_archive': 0, 'ownership_notes': [{'ticker': 'KXPRESNOMD-28-RW', 'side': 'NO', 'state': 'managed', 'r
+eason': 'Verified matching bot BUY fills'}, {'ticker': 'KXPRESNOMD-28-MO', 'side': 'NO', 'state': 'managed', 'reason': 
+'Verified matching bot BUY fills'}, {'ticker': 'KXPRESNOMD-28-MK', 'side': 'NO', 'state': 'managed', 'reason': 'Verifie
+d matching bot BUY fills'}, {'ticker': 'KXPRESNOMD-28-EWAR', 'side': 'NO', 'state': 'unmanaged', 'reason': 'Manual or u
+nrelated fills exist for this position'}]}[0m [[34m[1mtrading_system.beast_mode_bot[0m] 
+logs\latest.log:151:2026-10-16 12:26:30,753 - trading_system.position_tracking - INFO - [2m2026-10-16 12:26:30[0m [[
+32m[1minfo     [0m] [1mStarting enhanced position tracking job with sell limit orders.[0m [[34m[1mtrading_system.
+position_tracking[0m] 
+logs\latest.log:154:2026-10-16 12:26:31,170 - trading_system.position_tracking - INFO - [2m2026-10-16 12:26:31[0m [[
+32m[1minfo     [0m] [1m🎯 Checking for profit-taking opportunities...[0m [[34m[1mtrading_system.position_tracking
+[0m] 
+logs\latest.log:170:2026-10-16 12:26:33,728 - trading_system.position_tracking - INFO - [2m2026-10-16 12:26:33[0m [[
+32m[1minfo     [0m] [1m🛡️ Checking for stop-loss protection...[0m [[34m[1mtrading_system.position_tracking[0m] 
+logs\latest.log:175:2026-10-16 12:26:34,877 - trading_system.position_tracking - INFO - [2m2026-10-16 12:26:34[0m [[
+32m[1minfo     [0m] [1mFound 4 open positions to track.[0m [[34m[1mtrading_system.position_tracking[0m] 
+logs\latest.log:176:2026-10-16 12:26:34,877 - trading_system.position_tracking - INFO - [2m2026-10-16 12:26:34[0m [[
+32m[1minfo     [0m] [1mUnmanaged position KXPRESNOMD-28-EWAR: visible in Dashboard, auto-exit disabled[0m [[34m[1
+mtrading_system.position_tracking[0m] 
+logs\latest.log:181:2026-10-16 12:26:36,007 - trading_system.position_tracking - INFO - [2m2026-10-16 12:26:36[0m [[
+32m[1minfo     [0m] [1mPosition tracking completed. Profit/SL sell orders: 0, Resolution exits: 0, Exit sell orders 
+placed: 0, Exit failures (still open): 0[0m [[34m[1mtrading_system.position_tracking[0m] 
+
+

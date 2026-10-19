@@ -6,6 +6,7 @@ former 1,300-line portfolio_optimization.py.
 """
 
 import logging
+import os
 import numpy as np
 from datetime import datetime
 from typing import List, Optional, Tuple
@@ -17,6 +18,7 @@ from src.config.settings import settings
 from src.utils.logging_setup import get_trading_logger
 from src.utils.market_prices import get_market_prices
 from src.utils.position_sizing import binary_market_payout_odds, kelly_fraction
+from src.utils.market_selection import select_diverse_markets, quoted_yes_probability, _category, _event
 
 from src.strategies.portfolio.models import MarketOpportunity
 
@@ -34,14 +36,31 @@ async def create_market_opportunities_from_markets(
     logger = get_trading_logger("portfolio_opportunities")
     opportunities = []
     
-    # Limit markets to prevent excessive AI costs and focus on best opportunities
-    max_markets_to_analyze = 10  # REDUCED: More selective (was 20, now 10) to focus on highest quality
-    if len(markets) > max_markets_to_analyze:
-        # Sort by volume and take top markets
-        markets = sorted(markets, key=lambda m: m.volume, reverse=True)[:max_markets_to_analyze]
-        logger.info(f"Limited to top {max_markets_to_analyze} markets by volume for AI analysis")
-    
+    # Bounded, category- and event-diverse selection. Only selection changes;
+    # original AI confidence, edge, sizing and entry rules remain in force.
+    try:
+        max_markets_to_analyze = max(1, min(60, int(os.getenv('KALSHI_AI_MARKETS_PER_CYCLE', '30'))))
+    except ValueError:
+        logger.warning('Invalid KALSHI_AI_MARKETS_PER_CYCLE; using 30')
+        max_markets_to_analyze = 30
+
+    candidate_count = len(markets)
+    # Keep reserve candidates, as some eligible markets have no two-sided book.
+    # Never spend AI calls on an invalid market quote; bound requests separately.
+    pool_size = min(candidate_count, max_markets_to_analyze * 3)
+    markets = select_diverse_markets(markets, max_count=max(1, pool_size), per_event=2)
+    logger.info(
+        f"AI MARKET SELECTION: eligible={candidate_count}, candidate_pool={len(markets)}, "
+        f"categories={len({_category(m) for m in markets})}, "
+        f"events={len({_event(m) for m in markets})}, "
+        f"ai_call_budget={max_markets_to_analyze}"
+    )
+    ai_scored = 0
+    filtered_invalid_quotes = 0
+    filtered_edge = 0
     for market in markets:
+        if ai_scored >= max_markets_to_analyze:
+            break
         try:
             # Get current market data
             market_data = await kalshi_client.get_market(market.market_id)
@@ -50,13 +69,21 @@ async def create_market_opportunities_from_markets(
             
             # FIXED: Extract from nested 'market' object (same fix as immediate trading)
             market_info = market_data.get('market', {})
-            market_prob = market_info.get('yes_price', 50) / 100
-            
+            if market_info.get('status') not in (None, 'active', 'open'):
+                continue
+            market_prob = quoted_yes_probability(market_info)
+            if market_prob is None:
+                filtered_invalid_quotes += 1
+                logger.info(f"Skipping {market.market_id}: missing/invalid two-sided market quotes")
+                continue
+
             # Skip markets with extreme prices (too risky for portfolio)
             if market_prob < 0.05 or market_prob > 0.95:
+                filtered_invalid_quotes += 1
                 continue
-            
+
             # Get REAL AI prediction using fast analysis
+            ai_scored += 1
             predicted_prob, confidence = await _get_fast_ai_prediction(
                 market, xai_client, market_prob
             )
@@ -66,6 +93,13 @@ async def create_market_opportunities_from_markets(
                 logger.warning(f"AI analysis failed for {market.market_id}, skipping")
                 continue
             
+            # Log the actual model output (not a fallback confidence). Repeated
+            # 15% values can now be distinguished from pricing/selection errors.
+            logger.info(
+                f"AI PREDICTION: {market.market_id} quote_yes={market_prob:.3f} "
+                f"predicted_yes={predicted_prob:.3f} confidence={confidence:.1%}"
+            )
+
             # Calculate metrics
             edge = predicted_prob - market_prob
             expected_return = abs(edge) * confidence
@@ -116,13 +150,18 @@ async def create_market_opportunities_from_markets(
                 if db_manager:
                     await _evaluate_immediate_trade(opportunity, db_manager, kalshi_client, total_capital)
             else:
+                filtered_edge += 1
                 logger.info(f"❌ EDGE FILTERED: {market.market_id} - {edge_result.reason}")
             
         except Exception as e:
             logger.error(f"Error creating opportunity from {market.market_id}: {e}")
             continue
     
-    logger.info(f"Created {len(opportunities)} opportunities from {len(markets)} markets")
+    logger.info(
+        f"AI SCAN SUMMARY: eligible={candidate_count}, candidate_pool={len(markets)}, "
+        f"ai_calls={ai_scored}, skipped_quotes={filtered_invalid_quotes}, "
+        f"filtered_edge={filtered_edge}, approved={len(opportunities)}"
+    )
     return opportunities
 
 async def _evaluate_immediate_trade(

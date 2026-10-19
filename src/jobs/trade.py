@@ -160,7 +160,9 @@ async def _fallback_legacy_trading() -> Optional[TradingSystemResults]:
                 
                 if position:
                     # Execute position
-                    success = await execute_position(position, kalshi_client, db_manager)
+                    success = await execute_position(
+                        position, getattr(settings.trading, "live_trading_enabled", False),
+                        db_manager, kalshi_client)
                     if success:
                         positions_created += 1
                         total_exposure += position.entry_price * position.quantity

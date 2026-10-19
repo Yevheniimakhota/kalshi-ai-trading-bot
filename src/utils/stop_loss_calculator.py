@@ -87,16 +87,13 @@ class StopLossCalculator:
         else:
             take_profit_pct = cls.MIN_TAKE_PROFIT_PCT  # 15% for low confidence
             
-        # Calculate actual price levels based on side
-        if side.upper() == "YES":
-            # For YES positions, stop-loss is below entry, take-profit is above
-            stop_loss_price = entry_price * (1 - adjusted_stop_loss_pct)
-            take_profit_price = entry_price * (1 + take_profit_pct)
-        else:
-            # For NO positions, stop-loss is above entry, take-profit is below  
-            stop_loss_price = entry_price * (1 + adjusted_stop_loss_pct)
-            take_profit_price = entry_price * (1 - take_profit_pct)
-            
+        # entry_price is the price of the OWNED contract (YES or NO).
+        # Both long YES and long NO gain when their OWN contract price rises.
+        if side.upper() not in ("YES", "NO"):
+            raise ValueError(f"Unsupported contract side: {side}")
+        stop_loss_price = entry_price * (1 - adjusted_stop_loss_pct)
+        take_profit_price = entry_price * (1 + take_profit_pct)
+
         # Ensure prices are within valid bounds (1¢ to 99¢)
         stop_loss_price = max(0.01, min(0.99, stop_loss_price))
         take_profit_price = max(0.01, min(0.99, take_profit_price))
@@ -133,10 +130,9 @@ class StopLossCalculator:
         Returns:
             Stop-loss price
         """
-        if side.upper() == "YES":
-            stop_loss_price = entry_price * (1 - stop_loss_pct)
-        else:
-            stop_loss_price = entry_price * (1 + stop_loss_pct)
+        if side.upper() not in ("YES", "NO"):
+            raise ValueError(f"Unsupported contract side: {side}")
+        stop_loss_price = entry_price * (1 - stop_loss_pct)
             
         return max(0.01, min(0.99, round(stop_loss_price, 2)))
     
@@ -160,12 +156,9 @@ class StopLossCalculator:
         Returns:
             True if stop-loss should be triggered
         """
-        if position_side.upper() == "YES":
-            # For YES positions, trigger if price drops below stop-loss
-            return current_price <= stop_loss_price
-        else:
-            # For NO positions, trigger if price rises above stop-loss
-            return current_price >= stop_loss_price
+        if position_side.upper() not in ("YES", "NO"):
+            raise ValueError(f"Unsupported contract side: {position_side}")
+        return current_price <= stop_loss_price
     
     @classmethod
     def calculate_pnl_at_stop_loss(
@@ -181,12 +174,11 @@ class StopLossCalculator:
         Returns:
             Expected P&L (negative for loss)
         """
-        if side.upper() == "YES":
-            pnl_per_share = stop_loss_price - entry_price
-        else:
-            pnl_per_share = entry_price - stop_loss_price
+        if side.upper() not in ("YES", "NO"):
+            raise ValueError(f"Unsupported contract side: {side}")
+        pnl_per_share = stop_loss_price - entry_price
             
-        return pnl_per_share * quantity
+        return round(pnl_per_share * quantity, 2)
 
 
 # Convenience function for backward compatibility

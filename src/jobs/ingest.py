@@ -53,7 +53,7 @@ async def process_and_queue_markets(
         # cannot be traded.
         _COLLECTION_THRESHOLD = 0.98
         if yes_ask >= _COLLECTION_THRESHOLD and no_ask >= _COLLECTION_THRESHOLD:
-            logger.warning(
+            logger.debug(
                 f"Skipping collection/aggregate market {market_data['ticker']}: "
                 f"yes_ask={yes_ask:.4f}, no_ask={no_ask:.4f} "
                 f"(both >= {_COLLECTION_THRESHOLD}, not a tradeable binary market)"

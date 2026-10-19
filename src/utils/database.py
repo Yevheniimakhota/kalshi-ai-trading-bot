@@ -79,10 +79,14 @@ class LLMQuery:
 class DatabaseManager(TradingLoggerMixin):
     """Manages database operations for the trading system."""
 
-    def __init__(self, db_path: str = "trading_system.db"):
+    def __init__(self, db_path: str | None = None):
         """Initialize database connection."""
-        self.db_path = db_path
-        self.logger.info("Initializing database manager", db_path=db_path)
+        if db_path is None:
+            import os
+            from desktop.paths import get_trading_db_path
+            db_path = os.getenv("KALSHI_TRADING_DB_PATH") or str(get_trading_db_path())
+        self.db_path = str(db_path)
+        self.logger.info("Initializing database manager", db_path=self.db_path)
 
     async def initialize(self) -> None:
         """Initialize database schema and run migrations."""
@@ -342,6 +346,20 @@ class DatabaseManager(TradingLoggerMixin):
             columns = await cursor.fetchall()
             column_names = [col[1] for col in columns]
             
+            if 'strategy' not in column_names:
+                await db.execute("ALTER TABLE positions ADD COLUMN strategy TEXT")
+            trade_cur = await db.execute("PRAGMA table_info(trade_logs)")
+            trade_columns = {row[1] for row in await trade_cur.fetchall()}
+            if 'strategy' not in trade_columns:
+                await db.execute("ALTER TABLE trade_logs ADD COLUMN strategy TEXT")
+
+            # Original file defined _run_migrations twice; the second method overrides
+            # the first. Keep strategy columns available on older user databases.
+            for table in ('positions', 'trade_logs'):
+                cols = [row[1] for row in await (await db.execute(f'PRAGMA table_info({table})')).fetchall()]
+                if 'strategy' not in cols:
+                    await db.execute(f'ALTER TABLE {table} ADD COLUMN strategy TEXT')
+
             # Add missing columns for enhanced exit strategy
             if 'stop_loss_price' not in column_names:
                 await db.execute("ALTER TABLE positions ADD COLUMN stop_loss_price REAL")
@@ -544,7 +562,7 @@ class DatabaseManager(TradingLoggerMixin):
         async with aiosqlite.connect(self.db_path) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT * FROM positions WHERE market_id = ? AND side = ? AND status = 'open'", 
+                "SELECT * FROM positions WHERE market_id = ? AND side = ? AND status IN ('open','pending')", 
                 (market_id, side)
             )
             row = await cursor.fetchone()
@@ -959,68 +977,72 @@ class DatabaseManager(TradingLoggerMixin):
         self.logger.info(f"Updated position {position_id} to live.")
 
     async def add_position(self, position: Position) -> Optional[int]:
-        """
-        Adds a new position to the database, if one doesn't already exist for the same market and side.
-        
-        Args:
-            position: The position to add.
-        
-        Returns:
-            The ID of the newly inserted position, or None if a position already exists.
-        """
-        existing_position = await self.get_position_by_market_and_side(position.market_id, position.side)
-        if existing_position:
-            self.logger.warning(f"Position already exists for market {position.market_id} and side {position.side}.")
-            return None
+        """Insert a new intent without destroying a previous position/order ID.
 
+        A closed local row is archived before a new entry on the same side.
+        Pending and open rows prevent duplicate submissions.
+        """
+        import json
+        from datetime import timezone
+        position_dict = asdict(position)
+        position_dict['timestamp'] = position.timestamp.isoformat()
         async with aiosqlite.connect(self.db_path) as db:
-            position_dict = asdict(position)
-            # aiosqlite does not support dataclasses with datetime objects
-            position_dict['timestamp'] = position.timestamp.isoformat()
-
-            cursor = await db.execute("""
-                INSERT OR REPLACE INTO positions (market_id, side, entry_price, quantity, timestamp, rationale, confidence, live, status, strategy, stop_loss_price, take_profit_price, max_hold_hours, target_confidence_change)
-                VALUES (:market_id, :side, :entry_price, :quantity, :timestamp, :rationale, :confidence, :live, :status, :strategy, :stop_loss_price, :take_profit_price, :max_hold_hours, :target_confidence_change)
-            """, position_dict)
-            await db.commit()
-            
-            # Set has_position to True for the market
-            await db.execute("UPDATE markets SET has_position = 1 WHERE market_id = ?", (position.market_id,))
-            await db.commit()
-
-            self.logger.info(f"Added position for market {position.market_id}", position_id=cursor.lastrowid)
-            return cursor.lastrowid
+            await db.execute('BEGIN IMMEDIATE')
+            try:
+                db.row_factory = aiosqlite.Row
+                existing = await (await db.execute(
+                    'SELECT * FROM positions WHERE market_id=? AND UPPER(side)=?',
+                    (position.market_id, position.side.upper()))).fetchone()
+                if existing is not None:
+                    old = dict(existing)
+                    if old['status'] != 'closed':
+                        await db.rollback()
+                        self.logger.warning(f'Existing {old["status"]} position prevents new order for {position.market_id}')
+                        return None
+                    await db.execute('''CREATE TABLE IF NOT EXISTS closed_position_history (
+                        archived_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        original_id INTEGER NOT NULL, archived_at TEXT NOT NULL,
+                        snapshot_json TEXT NOT NULL
+                    )''')
+                    await db.execute('''INSERT INTO closed_position_history
+                        (original_id, archived_at, snapshot_json) VALUES(?,?,?)''',
+                        (old['id'], datetime.now(timezone.utc).isoformat(),
+                         json.dumps(old, ensure_ascii=False, default=str)))
+                    await db.execute("DELETE FROM positions WHERE id=? AND status='closed'",
+                                     (old['id'],))
+                cur = await db.execute('''INSERT INTO positions
+                    (market_id,side,entry_price,quantity,timestamp,rationale,confidence,
+                     live,status,strategy,stop_loss_price,take_profit_price,max_hold_hours,
+                     target_confidence_change)
+                    VALUES (:market_id,:side,:entry_price,:quantity,:timestamp,:rationale,
+                     :confidence,:live,:status,:strategy,:stop_loss_price,:take_profit_price,
+                     :max_hold_hours,:target_confidence_change)''', position_dict)
+                await db.execute('UPDATE markets SET has_position=1 WHERE market_id=?',
+                                 (position.market_id,))
+                await db.commit()
+                self.logger.info(f'Added position intent for {position.market_id}', position_id=cur.lastrowid)
+                return cur.lastrowid
+            except aiosqlite.IntegrityError:
+                await db.rollback()
+                self.logger.warning(f'Concurrent position collision for {position.market_id}/{position.side}')
+                return None
+            except Exception:
+                await db.rollback()
+                raise
 
     async def get_open_positions(self) -> List[Position]:
-        """Get all open positions."""
+        """Open inventory only; pending Demo orders are not owned contracts."""
         async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute(
-                "SELECT * FROM positions WHERE status = 'open'"
-            )
-            rows = await cursor.fetchall()
-            
-            positions = []
+            db.row_factory = aiosqlite.Row
+            rows = await (await db.execute(
+                "SELECT * FROM positions WHERE status='open'"
+            )).fetchall()
+            result = []
             for row in rows:
-                # Convert database row to Position object
-                position = Position(
-                    market_id=row[1],
-                    side=row[2],
-                    entry_price=row[3],
-                    quantity=row[4],
-                    timestamp=datetime.fromisoformat(row[5]),
-                    rationale=row[6],
-                    confidence=row[7],
-                    live=bool(row[8]),
-                    status=row[9],
-                    id=row[0],
-                    stop_loss_price=row[10],
-                    take_profit_price=row[11],
-                    max_hold_hours=row[12],
-                    target_confidence_change=row[13]
-                )
-                positions.append(position)
-            
-            return positions
+                data = dict(row)
+                data['timestamp'] = datetime.fromisoformat(data['timestamp'])
+                result.append(Position(**data))
+            return result
 
 if __name__ == "__main__":
     import asyncio

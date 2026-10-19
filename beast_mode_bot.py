@@ -26,6 +26,7 @@ import asyncio
 import argparse
 import time
 import signal
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -80,8 +81,10 @@ class BeastModeBot:
         self.logger.info(f"⚙️ settings.trading.paper_trading_mode: {settings.trading.paper_trading_mode}")
         
         if live_mode:
-            self.logger.warning("⚠️ LIVE TRADING MODE ENABLED - REAL MONEY WILL BE USED")
-            self.logger.warning("⚠️ All orders will be placed on the Kalshi exchange")
+            if os.getenv('KALSHI_ENV','').lower() == 'demo':
+                self.logger.info('🧪 DEMO API TRADING: test funds, exchange orders enabled')
+            else:
+                self.logger.warning('⚠️ PRODUCTION TRADING ENABLED - REAL MONEY')
         else:
             self.logger.info("📝 Paper trading mode - orders will be simulated")
 
@@ -114,6 +117,11 @@ class BeastModeBot:
             
             # Initialize other components
             kalshi_client = KalshiClient()
+
+            if self.live_mode and os.getenv("KALSHI_ENV", "").lower() == "demo":
+                from src.jobs.sync_positions import sync_demo_positions
+                result = await sync_demo_positions(db_manager, kalshi_client)
+                self.logger.info(f"Demo startup position sync: {result}")
 
             # LLM client — single-model with OpenRouter fallback chain. The
             # XAIClient name is historical; it routes through OpenRouter,
@@ -317,8 +325,12 @@ class BeastModeBot:
         while not self.shutdown_event.is_set():
             try:
                 # ✅ FIXED: Pass the shared database manager
+                if self.live_mode and os.getenv("KALSHI_ENV", "").lower() == "demo":
+                    from src.jobs.sync_positions import sync_demo_positions
+                    result = await sync_demo_positions(db_manager, kalshi_client)
+                    self.logger.info(f"Demo periodic position sync: {result}")
                 await run_tracking(db_manager)
-                await asyncio.sleep(120)  # Check positions every 2 minutes (slower to reduce API load)
+                await asyncio.sleep(60)  # Refresh Demo portfolio every 60 seconds
             except Exception as e:
                 self.logger.error(f"Error in position tracking: {e}")
                 await asyncio.sleep(30)

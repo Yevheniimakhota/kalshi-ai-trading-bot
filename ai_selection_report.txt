@@ -1,0 +1,156 @@
+﻿
+logs\latest.log:168:2026-10-18 14:32:20,066 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:20[
+0m [[32m[1minfo     [0m] [1mAI MARKET SELECTION: eligible=358, candidate_pool=90, categories=90, events=90, ai_call
+_budget=30[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:201:2026-10-18 14:32:25,972 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:25[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXPRESNOMD-28-GN quote_yes=0.135 predicted_yes=0.020 confidence=85.0%[0
+m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:202:2026-10-18 14:32:26,019 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:26[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXPRESNOMD-28-GN - Edge: 11.5% (NO), Confidence: 85.0%, Reason: Meets 
+requirements: 11.5% edge, 85.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:227:2026-10-18 14:32:31,184 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:31[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXCITRINI-28JUL01 quote_yes=0.545 predicted_yes=0.250 confidence=50.0%[
+0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:228:2026-10-18 14:32:31,199 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:31[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXCITRINI-28JUL01 - Edge: 29.5% (NO), Confidence: 50.0%, Reason: Meets
+ requirements: 29.5% edge, 50.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:253:2026-10-18 14:32:35,493 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:35[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXGREENTERRITORY-29-27 quote_yes=0.375 predicted_yes=0.050 confidence=75
+.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:254:2026-10-18 14:32:35,493 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:35[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXGREENTERRITORY-29-27 - Edge: 32.5% (NO), Confidence: 75.0%, Reason: 
+Meets requirements: 32.5% edge, 75.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:260:2026-10-18 14:32:41,850 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:41[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXGREENLAND-29-27 quote_yes=0.790 predicted_yes=0.050 confidence=75.0%[
+0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:261:2026-10-18 14:32:41,865 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:41[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXGREENLAND-29-27 - Edge: 74.0% (NO), Confidence: 75.0%, Reason: Meets
+ requirements: 74.0% edge, 75.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:268:2026-10-18 14:32:48,782 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:48[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXNEXTPRESSECPERM-29JAN20-AKEL quote_yes=0.115 predicted_yes=0.080 confi
+dence=30.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:269:2026-10-18 14:32:48,782 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:48[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXNEXTPRESSECPERM-29JAN20-AKEL - Confidence 30.0% below minimum 35.0%
+[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:272:2026-10-18 14:32:54,216 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:54[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXNBATEAM-30 quote_yes=0.930 predicted_yes=0.750 confidence=65.0%[0m [
+[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:273:2026-10-18 14:32:54,216 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:54[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXNBATEAM-30 - Edge: 18.0% (NO), Confidence: 65.0%, Reason: Meets requ
+irements: 18.0% edge, 65.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:274:2026-10-18 14:32:58,522 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:58[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXU3MAX-30-8 quote_yes=0.595 predicted_yes=0.650 confidence=45.0%[0m [
+[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:275:2026-10-18 14:32:58,522 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:32:58[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXU3MAX-30-8 - Edge 5.5% below required 8.0% for confidence 45.0%[0m 
+[[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:276:2026-10-18 14:33:02,256 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:02[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXINSURRECTION-29 quote_yes=0.835 predicted_yes=0.250 confidence=40.0%[
+0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:277:2026-10-18 14:33:02,256 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:02[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXINSURRECTION-29 - Edge: 58.5% (NO), Confidence: 40.0%, Reason: Meets
+ requirements: 58.5% edge, 40.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:278:2026-10-18 14:33:05,559 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:05[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXVPRESNOMD-28-JS quote_yes=0.060 predicted_yes=0.000 confidence=100.0%
+[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:279:2026-10-18 14:33:05,559 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:05[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXVPRESNOMD-28-JS - Edge: 5.0% (NO), Confidence: 100.0%, Reason: Meets
+ requirements: 5.0% edge, 100.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:281:2026-10-18 14:33:09,656 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:09[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KX2028DRUN-28-JFET quote_yes=0.495 predicted_yes=0.750 confidence=45.0%
+[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:282:2026-10-18 14:33:09,656 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:09[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KX2028DRUN-28-JFET - Edge: 25.5% (YES), Confidence: 45.0%, Reason: Mee
+ts requirements: 25.5% edge, 45.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:283:2026-10-18 14:33:13,355 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:13[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXPHILIPPINESSENATE-28-NPC quote_yes=0.495 predicted_yes=0.520 confidenc
+e=25.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:284:2026-10-18 14:33:13,355 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:13[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXPHILIPPINESSENATE-28-NPC - Confidence 25.0% below minimum 35.0%[0m 
+[[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:285:2026-10-18 14:33:17,622 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:17[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXAMEND25-29 quote_yes=0.355 predicted_yes=0.080 confidence=65.0%[0m [
+[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:286:2026-10-18 14:33:17,622 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:17[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXAMEND25-29 - Edge: 27.5% (NO), Confidence: 65.0%, Reason: Meets requ
+irements: 27.5% edge, 65.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:290:2026-10-18 14:33:23,056 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:23[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KX2028RRUN-28-EMUS quote_yes=0.495 predicted_yes=0.750 confidence=45.0%
+[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:291:2026-10-18 14:33:23,056 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:23[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KX2028RRUN-28-EMUS - Edge: 25.5% (YES), Confidence: 45.0%, Reason: Mee
+ts requirements: 25.5% edge, 45.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:299:2026-10-18 14:33:28,655 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:28[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXMOLDOVAPRES-28-ASTO quote_yes=0.200 predicted_yes=0.750 confidence=45.
+0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:300:2026-10-18 14:33:28,671 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:28[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXMOLDOVAPRES-28-ASTO - Edge: 55.0% (YES), Confidence: 45.0%, Reason: 
+Meets requirements: 55.0% edge, 45.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:310:2026-10-18 14:33:35,044 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:35[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXDEMOCRACYUS-28-7.25 quote_yes=0.495 predicted_yes=0.350 confidence=45.
+0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:311:2026-10-18 14:33:35,044 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:35[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXDEMOCRACYUS-28-7.25 - Edge: 14.5% (NO), Confidence: 45.0%, Reason: M
+eets requirements: 14.5% edge, 45.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:312:2026-10-18 14:33:39,028 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:39[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXFTA-29 quote_yes=0.775 predicted_yes=0.720 confidence=65.0%[0m [[34m
+[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:313:2026-10-18 14:33:39,029 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:39[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXFTA-29 - Edge: 5.5% (NO), Confidence: 65.0%, Reason: Meets requireme
+nts: 5.5% edge, 65.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:314:2026-10-18 14:33:42,885 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:42[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXPHILIPPINESHOUSE-28-NACION quote_yes=0.495 predicted_yes=0.650 confide
+nce=30.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:315:2026-10-18 14:33:42,885 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:42[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXPHILIPPINESHOUSE-28-NACION - Confidence 30.0% below minimum 35.0%[0
+m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:316:2026-10-18 14:33:47,404 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:47[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXPOLANDSEJM-27-CONFED quote_yes=0.495 predicted_yes=0.520 confidence=40
+.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:317:2026-10-18 14:33:47,405 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:47[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXPOLANDSEJM-27-CONFED - Edge 2.5% below required 8.0% for confidence 
+40.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:318:2026-10-18 14:33:50,901 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:50[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXTURKEYPRES-28-MINC quote_yes=0.495 predicted_yes=0.550 confidence=30.0
+%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:319:2026-10-18 14:33:50,902 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:50[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXTURKEYPRES-28-MINC - Confidence 30.0% below minimum 35.0%[0m [[34m
+[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:320:2026-10-18 14:33:54,442 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:54[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXTVSEASONRELEASETHELASTOFUS-27-JAN quote_yes=0.820 predicted_yes=0.780 
+confidence=65.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:321:2026-10-18 14:33:54,444 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:54[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXTVSEASONRELEASETHELASTOFUS-27-JAN - Edge 4.0% below required 5.0% fo
+r confidence 65.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:323:2026-10-18 14:33:58,299 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:58[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: GOVPARTYUT-28-R quote_yes=0.495 predicted_yes=0.950 confidence=92.0%[0m
+ [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:324:2026-10-18 14:33:58,300 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:33:58[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: GOVPARTYUT-28-R - Edge: 45.5% (YES), Confidence: 92.0%, Reason: Meets 
+requirements: 45.5% edge, 92.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:325:2026-10-18 14:34:03,092 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:03[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXNEXTSTATE-29-ROBR quote_yes=0.645 predicted_yes=0.680 confidence=45.0%
+[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:326:2026-10-18 14:34:03,093 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:03[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXNEXTSTATE-29-ROBR - Edge 3.5% below required 8.0% for confidence 45.
+0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:331:2026-10-18 14:34:09,069 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:09[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXQUEBEC-29 quote_yes=0.495 predicted_yes=0.150 confidence=70.0%[0m [[
+34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:332:2026-10-18 14:34:09,070 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:09[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXQUEBEC-29 - Edge: 34.5% (NO), Confidence: 70.0%, Reason: Meets requi
+rements: 34.5% edge, 70.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:333:2026-10-18 14:34:12,967 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:12[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXH1B-29 quote_yes=0.725 predicted_yes=0.450 confidence=55.0%[0m [[34m
+[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:334:2026-10-18 14:34:12,969 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:12[
+0m [[32m[1minfo     [0m] [1m✅ EDGE APPROVED: KXH1B-29 - Edge: 27.5% (NO), Confidence: 55.0%, Reason: Meets requirem
+ents: 27.5% edge, 55.0% confidence[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:335:2026-10-18 14:34:16,993 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:16[
+0m [[32m[1minfo     [0m] [1mAI PREDICTION: KXPRESTAIWAN-28-TGOU quote_yes=0.545 predicted_yes=0.600 confidence=35.0
+%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+logs\latest.log:336:2026-10-18 14:34:16,995 - trading_system.portfolio_opportunities - INFO - [2m2026-10-18 14:34:16[
+0m [[32m[1minfo     [0m] [1m❌ EDGE FILTERED: KXPRESTAIWAN-28-TGOU - Edge 5.5% below required 8.0% for confidence 35
+.0%[0m [[34m[1mtrading_system.portfolio_opportunities[0m] 
+
+

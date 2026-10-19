@@ -70,7 +70,7 @@ class EdgeFilter:
         # Validate inputs
         ai_probability = max(0.01, min(0.99, ai_probability))
         market_probability = max(0.01, min(0.99, market_probability))
-        confidence = confidence or 0.7
+        confidence = 0.7 if confidence is None else confidence
         
         # Calculate raw edge (probability difference)
         edge_magnitude = ai_probability - market_probability
